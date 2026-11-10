@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.DS_Store
+*.log
+
+# 학생 개인정보 파일이 실수로 올라가지 않도록 막습니다.
+*.xlsx
+*.xls
+*.csv
+*.admchk
+!public/*.xlsx
