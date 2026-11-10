@@ -1,27 +1,19 @@
 import { useMemo } from 'react';
-import type { Application, ScheduleEvent, Student, UniversityRegistry } from '../lib/types';
+import type { ScheduleEvent } from '../lib/types';
 import { COMMON_SCHEDULE } from '../data/commonSchedule';
 import { resolveUniv } from '../lib/univLookup';
 import { allInsights } from '../lib/insights';
 import { maskName } from '../lib/format';
-import type { Settings } from '../lib/storage';
 import { covers, endOf, eventColor, eventLabel, parseYmd, shortDate, ymd } from './CalendarView';
-import { needsCheck, openLookup, StudentBadges } from './ApplicationsView';
-import { STATUS_STYLE } from './status';
+import { AppRows, needsCheck, StudentBadges, type Props as RowProps } from './ApplicationsView';
 
 type Tab = 'list' | 'wait' | 'calendar' | 'stats' | 'univ';
 
-export function TodayView(p: {
-  students: Student[];
-  applications: Application[];
-  universities: UniversityRegistry;
-  schedule: ScheduleEvent[];
-  settings: Settings;
-  hideInfo: boolean;
-  onNavigate: (tab: Tab) => void;
-  onSetUnivUrl: (univ: string, url: string) => void;
-  onEdit: (a: Application) => void;
-}) {
+export function TodayView(
+  p: RowProps & {
+    onNavigate: (tab: Tab) => void;
+  },
+) {
   const now = new Date();
   const today = ymd(now);
   const tomorrow = ymd(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1));
@@ -52,37 +44,23 @@ export function TodayView(p: {
     noEvent: appliedUnivs.filter((u) => !p.schedule.some((e) => e.univ === u)),
   };
 
-  const EventBlock = ({ e, withApps }: { e: ScheduleEvent; withApps: boolean }) => {
+  // 컴포넌트가 아닌 함수로 그려야 다시 그릴 때 예비번호 입력칸이 초기화되지 않습니다.
+  const eventBlock = (e: ScheduleEvent, withApps: boolean) => {
     const apps = e.univ ? p.applications.filter((a) => a.university === e.univ) : [];
     const pending = apps.filter((a) => needsCheck(a));
     return (
-      <li className={`rounded-xl border p-3 ${eventColor(e)}`}>
+      <li key={e.id} className={`rounded-xl border p-3 ${eventColor(e)}`}>
         <div className="flex flex-wrap items-center gap-2">
           <span className="font-semibold">{eventLabel(e)}</span>
           {!e.univ && <span className="rounded bg-white/70 px-1.5 text-[11px]">전국 공통</span>}
+          {e.builtin && <span className="rounded bg-white/70 px-1.5 text-[11px]">모집요강</span>}
           {e.univ && <span className="text-xs">원서 {apps.length}건 · 오늘 미확인 {pending.length}건</span>}
         </div>
         {e.memo && <p className="mt-1 text-xs">{e.memo}</p>}
         {withApps && apps.length > 0 && (
-          <ul className="mt-2 divide-y divide-black/5 rounded-lg bg-white">
-            {apps.map((a) => (
-              <li key={a.id} className="flex items-center gap-2 px-3 py-1.5 text-sm text-slate-700">
-                <span className="font-medium">{nameOf(a.studentId)}</span>
-                <span className="truncate text-xs text-slate-500">{a.major}</span>
-                <span className={`rounded px-1.5 text-[11px] ${STATUS_STYLE[a.status].badge}`}>
-                  {a.status}
-                  {a.status === '예비' && a.waitNo && ` ${a.waitNo}번`}
-                </span>
-                {needsCheck(a) && <span className="text-[11px] font-semibold text-blue-600">확인 필요</span>}
-                <button
-                  className="ml-auto rounded-md bg-blue-600 px-2 py-0.5 text-xs font-semibold text-white"
-                  onClick={() => openLookup(a, byId.get(a.studentId), p.universities, p.onSetUnivUrl)}
-                >
-                  조회 ↗
-                </button>
-              </li>
-            ))}
-          </ul>
+          <div className="mt-2 overflow-hidden rounded-lg bg-white text-slate-800">
+            <AppRows {...p} apps={apps} showUniv={false} />
+          </div>
         )}
       </li>
     );
@@ -118,7 +96,7 @@ export function TodayView(p: {
         ) : (
           <ul className="mt-2 space-y-2">
             {todayEvents.map((e) => (
-              <EventBlock key={e.id} e={e} withApps />
+              eventBlock(e, true)
             ))}
           </ul>
         )}
@@ -127,7 +105,7 @@ export function TodayView(p: {
             <h3 className="mt-4 text-sm font-semibold text-slate-600">내일 일정</h3>
             <ul className="mt-2 space-y-2">
               {tomorrowEvents.map((e) => (
-                <EventBlock key={e.id} e={e} withApps={false} />
+                eventBlock(e, true)
               ))}
             </ul>
           </>

@@ -10,7 +10,7 @@ import { isPass, studentInsight, type StudentInsight } from '../lib/insights';
 import { nextEventFor, shortDate } from './CalendarView';
 import { btn, copyText, inputCls, toast } from './ui';
 
-interface Props {
+export interface Props {
   students: Student[];
   applications: Application[];
   universities: UniversityRegistry;
@@ -649,5 +649,43 @@ export function HistoryChips({ history, max = 6 }: { history: Application['histo
         );
       })}
     </div>
+  );
+}
+
+/**
+ * 원서 줄 묶음 (조회 목록과 같은 기능: 조회·복사·결과 기록·등록·+학과·수정).
+ * 다른 화면(오늘 할 일 등)에서 같은 동작으로 쓰기 위한 공용 부품입니다.
+ */
+export function AppRows({ apps, showUniv, ...p }: Props & { apps: Application[]; showUniv: boolean }) {
+  const studentById = new Map(p.students.map((s) => [s.id, s]));
+  const nameOf = (id: string) => studentById.get(id)?.name ?? '';
+  // 같은 학생·같은 대학 원서는 붙여서
+  const sorted = [...apps].sort((x, y) =>
+    showUniv
+      ? x.university.localeCompare(y.university, 'ko')
+      : nameOf(x.studentId).localeCompare(nameOf(y.studentId), 'ko') || x.studentId.localeCompare(y.studentId),
+  );
+  const clusterSize = (a: Application) => p.applications.filter((x) => x.studentId === a.studentId && x.university === a.university).length;
+  return (
+    <ul className="divide-y divide-slate-100">
+      {sorted.map((a, i) => {
+        const s = studentById.get(a.studentId);
+        return (
+          <AppRow
+            key={a.id}
+            {...p}
+            app={a}
+            student={s}
+            showUniv={showUniv}
+            linkKind={linkKind(a.university, p.universities)}
+            insight={s ? studentInsight(s, p.applications) : undefined}
+            continued={i > 0 && sorted[i - 1].studentId === a.studentId && sorted[i - 1].university === a.university}
+            firstExamNo={sorted.find((x) => x.studentId === a.studentId && x.university === a.university)?.examNo ?? ''}
+            clusterSize={clusterSize(a)}
+            onLookup={() => openLookup(a, s, p.universities, p.onSetUnivUrl)}
+          />
+        );
+      })}
+    </ul>
   );
 }
