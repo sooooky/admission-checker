@@ -1,13 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { Application, Student, UniversityRegistry, VaultData } from './lib/types';
+import type { Application, ScheduleEvent, Student, UniversityRegistry, VaultData } from './lib/types';
 import { emptyVault, migrateVault } from './lib/types';
 import { WaitlistView } from './components/WaitlistView';
+import { CalendarView } from './components/CalendarView';
 import { createKey, decryptJSON, encryptJSON, type KeyHandle } from './lib/crypto';
 import {
   downloadText,
+  loadSchedule,
   loadSettings,
   loadUniversities,
   loadVaultBlob,
+  saveSchedule,
   saveSettings,
   saveUniversities,
   saveVaultBlob,
@@ -24,15 +27,17 @@ import { EditModal } from './components/EditModal';
 import { SettingsModal, type BackupPayload } from './components/SettingsModal';
 import { Toaster, btn, toast } from './components/ui';
 import { downloadTemplate } from './lib/excel';
+import { mergeSchedule } from './lib/schedule';
 
 type Phase = 'setup' | 'locked' | 'unlocked';
-type Tab = 'list' | 'wait' | 'univ' | 'guide';
+type Tab = 'list' | 'wait' | 'calendar' | 'univ' | 'guide';
 
 export default function App() {
   const [phase, setPhase] = useState<Phase>(() => (loadVaultBlob() ? 'locked' : 'setup'));
   const [data, setData] = useState<VaultData>(emptyVault);
   const [universities, setUniversities] = useState<UniversityRegistry>(loadUniversities);
   const [settings, setSettings] = useState<Settings>(loadSettings);
+  const [schedule, setSchedule] = useState<ScheduleEvent[]>(loadSchedule);
   const [tab, setTab] = useState<Tab>('list');
   const [hideInfo, setHideInfo] = useState(false);
   const [modal, setModal] = useState<null | 'import' | 'settings' | { edit: Application | null }>(null);
@@ -104,6 +109,7 @@ export default function App() {
 
   useEffect(() => saveUniversities(universities), [universities]);
   useEffect(() => saveSettings(settings), [settings]);
+  useEffect(() => saveSchedule(schedule), [schedule]);
 
   // ── 자동 잠금 ──
   useEffect(() => {
@@ -132,6 +138,7 @@ export default function App() {
         toast('다른 탭에서 데이터가 변경되어 잠갔습니다. 한 탭에서만 사용해 주세요.', 'err');
       }
       if (e.key === 'admchk_universities_v1') setUniversities(loadUniversities());
+      if (e.key === 'admchk_schedule_v1') setSchedule(loadSchedule());
     };
     window.addEventListener('storage', onStorage);
     return () => window.removeEventListener('storage', onStorage);
@@ -164,7 +171,7 @@ export default function App() {
 
   const exportBackup = async () => {
     if (!keyRef.current) return;
-    const payload: BackupPayload = { vault: data, universities };
+    const payload: BackupPayload = { vault: data, universities, schedule };
     const blob = await encryptJSON(keyRef.current, payload);
     const d = new Date();
     const stamp = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
@@ -198,7 +205,8 @@ export default function App() {
   const tabs: [Tab, string][] = [
     ['list', '조회 목록'],
     ['wait', '예비 현황'],
-    ['univ', '대학별 조회 주소'],
+    ['calendar', '발표 일정'],
+    ['univ', '대학 정보'],
     ['guide', '사용법 · 자동입력'],
   ];
 
@@ -265,6 +273,7 @@ export default function App() {
               hideInfo={hideInfo}
               onChangeApp={changeApp}
               onRoundChange={(r) => setSettings((s) => ({ ...s, currentRound: r }))}
+              schedule={schedule}
               onSetUnivUrl={setUnivUrl}
               onEdit={(a) => setModal({ edit: a })}
               onAdd={() => setModal({ edit: null })}
@@ -279,8 +288,25 @@ export default function App() {
             onEdit={(a) => setModal({ edit: a })}
           />
         )}
+        {tab === 'calendar' && (
+          <CalendarView
+            students={data.students}
+            applications={data.applications}
+            universities={universities}
+            schedule={schedule}
+            hideInfo={hideInfo}
+            onChangeSchedule={setSchedule}
+            onSetUnivUrl={setUnivUrl}
+          />
+        )}
         {tab === 'univ' && (
-          <UniversitiesView applications={data.applications} universities={universities} onChange={setUniversities} />
+          <UniversitiesView
+            applications={data.applications}
+            universities={universities}
+            schedule={schedule}
+            onChange={setUniversities}
+            onChangeSchedule={setSchedule}
+          />
         )}
         {tab === 'guide' && <GuideView />}
       </main>
@@ -297,6 +323,7 @@ export default function App() {
           onRestoreBackup={(b) => {
             commit(() => migrateVault(b.vault));
             setUniversities((u) => ({ ...u, ...(b.universities ?? {}) }));
+            if (Array.isArray(b.schedule)) setSchedule((cur) => mergeSchedule(cur, b.schedule ?? []));
           }}
           onWipeAll={() => {
             wipeAll();
@@ -304,6 +331,7 @@ export default function App() {
             dirtyRef.current = false;
             setData(emptyVault());
             setUniversities({});
+            setSchedule([]);
             setSettings(loadSettings());
             setModal(null);
             setPhase('setup');

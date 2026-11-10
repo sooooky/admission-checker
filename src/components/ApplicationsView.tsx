@@ -1,10 +1,12 @@
 import { useMemo, useState } from 'react';
-import type { Application, Status, Student, UniversityRegistry } from '../lib/types';
+import type { Application, ScheduleEvent, Status, Student, UniversityRegistry } from '../lib/types';
 import { MAX_ROUND, STATUSES, entryText, recordRound, roundLabel, roundLongLabel } from '../lib/types';
 import { birthAs, formatBirth, formatDateTime, maskName, maskPhone } from '../lib/format';
 import { encodePayload } from '../lib/autofill';
 import type { Settings } from '../lib/storage';
 import { STATUS_STYLE } from './status';
+import { resolveUniv } from '../lib/univLookup';
+import { nextEventFor, shortDate } from './CalendarView';
 import { btn, copyText, inputCls, toast } from './ui';
 
 interface Props {
@@ -15,6 +17,7 @@ interface Props {
   hideInfo: boolean;
   onChangeApp: (id: string, fn: (a: Application) => Application) => void;
   onRoundChange: (round: number) => void;
+  schedule: ScheduleEvent[];
   onSetUnivUrl: (univ: string, url: string) => void;
   onEdit: (app: Application) => void;
   onAdd: () => void;
@@ -37,6 +40,36 @@ export function isSafeUrl(url: string) {
 
 export function openExternal(url: string) {
   window.open(url, '_blank', 'noopener,noreferrer');
+}
+
+/** [조회 ↗]: 조회 주소(없으면 입학처 홈페이지)를 열고 자동입력 코드를 복사합니다. */
+export async function openLookup(
+  a: Application,
+  s: Student | undefined,
+  universities: UniversityRegistry,
+  onSetUnivUrl: (univ: string, url: string) => void,
+) {
+  const r = resolveUniv(a.university, universities[a.university]);
+  let url = r.url;
+  let usedHome = false;
+  if (!url && r.home) {
+    url = r.home;
+    usedHome = true;
+  }
+  if (!url) {
+    const set = askUnivUrl(a.university, '', onSetUnivUrl);
+    if (!set) return;
+    url = set;
+  }
+  if (s) {
+    try {
+      await navigator.clipboard.writeText(encodePayload({ e: a.examNo, n: s.name, b: s.birth, p: s.phone }));
+    } catch {
+      /* 복사 실패해도 페이지는 엽니다 */
+    }
+  }
+  toast(usedHome ? '입학처 홈페이지를 열었습니다 (합격자 조회 주소를 등록하면 바로 열립니다)' : '조회 페이지를 열고 자동입력 코드를 복사했습니다');
+  openExternal(url);
 }
 
 export function askUnivUrl(univ: string, current: string, onSet: (univ: string, url: string) => void): string | null {
@@ -103,24 +136,7 @@ export function ApplicationsView(p: Props) {
   const total = p.applications.length;
   const done = total - counts['미조회'];
 
-  const lookup = async (a: Application) => {
-    const s = studentById.get(a.studentId);
-    let url = p.universities[a.university]?.url ?? '';
-    if (!url) {
-      const set = askUnivUrl(a.university, '', p.onSetUnivUrl);
-      if (!set) return;
-      url = set;
-    }
-    if (s) {
-      try {
-        await navigator.clipboard.writeText(encodePayload({ e: a.examNo, n: s.name, b: s.birth, p: s.phone }));
-        toast('조회 페이지를 열고 자동입력 코드를 복사했습니다');
-      } catch {
-        /* 복사 실패해도 페이지는 엽니다 */
-      }
-    }
-    openExternal(url);
-  };
+  const lookup = (a: Application) => openLookup(a, studentById.get(a.studentId), p.universities, p.onSetUnivUrl);
 
   return (
     <div className="space-y-4">
@@ -208,7 +224,6 @@ export function ApplicationsView(p: Props) {
         const isUniv = groupBy === 'univ';
         const student = isUniv ? undefined : studentById.get(key);
         const title = isUniv ? key : p.hideInfo ? maskName(student?.name ?? '') : student?.name ?? '';
-        const info = isUniv ? p.universities[key] : undefined;
         const pending = apps.filter((a) => a.status === '미조회').length;
         const isCollapsed = collapsed[key];
         return (
@@ -224,23 +239,7 @@ export function ApplicationsView(p: Props) {
                   {apps.length}건{pending > 0 && <span className="text-blue-600"> · 미조회 {pending}</span>}
                 </span>
               </button>
-              {isUniv && (
-                <div className="flex items-center gap-1.5">
-                  {info?.memo && <span className="hidden max-w-[16rem] truncate text-xs text-slate-500 md:inline">📝 {info.memo}</span>}
-                  {info?.url ? (
-                    <button className={btn.chip} onClick={() => openExternal(info.url)}>
-                      🔗 조회 페이지
-                    </button>
-                  ) : (
-                    <button
-                      className={`${btn.chip} border-amber-300 bg-amber-50 text-amber-800`}
-                      onClick={() => askUnivUrl(key, '', p.onSetUnivUrl)}
-                    >
-                      ⚠️ 조회 주소 등록
-                    </button>
-                  )}
-                </div>
-              )}
+              {isUniv && <UnivHeaderLinks univ={key} {...p} />}
               {!isUniv && student && (
                 <span className="text-xs text-slate-500">
                   {p.hideInfo ? '****' : formatBirth(student.birth)}
@@ -256,7 +255,7 @@ export function ApplicationsView(p: Props) {
                     app={a}
                     student={studentById.get(a.studentId)}
                     showUniv={!isUniv}
-                    hasUrl={!!p.universities[a.university]?.url}
+                    linkKind={linkKind(a.university, p.universities)}
                     {...p}
                     onLookup={() => lookup(a)}
                   />
@@ -274,13 +273,13 @@ function AppRow({
   app: a,
   student: s,
   showUniv,
-  hasUrl,
+  linkKind,
   settings,
   hideInfo,
   onChangeApp,
   onEdit,
   onLookup,
-}: Props & { app: Application; student?: Student; showUniv: boolean; hasUrl: boolean; onLookup: () => void }) {
+}: Props & { app: Application; student?: Student; showUniv: boolean; linkKind: LinkKind; onLookup: () => void }) {
   const round = settings.currentRound;
   const thisEntry = a.history.find((h) => h.round === round);
   const prevWait = [...a.history].reverse().find((h) => h.round < round && h.status === '예비');
@@ -324,11 +323,17 @@ function AppRow({
       {/* 조회 + 복사 */}
       <div className="flex flex-wrap items-center gap-1.5">
         <button
-          className={`rounded-md px-2.5 py-1 text-xs font-semibold text-white ${hasUrl ? 'bg-blue-600 hover:bg-blue-700' : 'bg-amber-500 hover:bg-amber-600'}`}
+          className={`rounded-md px-2.5 py-1 text-xs font-semibold text-white ${LINK_STYLE[linkKind]}`}
           onClick={onLookup}
-          title="조회 페이지를 새 탭으로 열고, 자동입력 코드를 클립보드에 복사합니다"
+          title={
+            linkKind === 'url'
+              ? '조회 페이지를 새 탭으로 열고, 자동입력 코드를 클립보드에 복사합니다'
+              : linkKind === 'home'
+                ? '조회 주소가 없어 입학처 홈페이지를 엽니다'
+                : '조회 주소를 등록합니다'
+          }
         >
-          조회 ↗
+          {linkKind === 'home' ? '입학처 ↗' : '조회 ↗'}
         </button>
         <button className={btn.chip} onClick={() => copyText(a.examNo, '수험번호')} title="수험번호 복사">
           #{hideInfo ? '••••' : a.examNo || '없음'}
@@ -380,5 +385,54 @@ function AppRow({
         </button>
       </div>
     </li>
+  );
+}
+
+type LinkKind = 'url' | 'home' | 'none';
+const LINK_STYLE: Record<LinkKind, string> = {
+  url: 'bg-blue-600 hover:bg-blue-700',
+  home: 'bg-sky-500 hover:bg-sky-600',
+  none: 'bg-amber-500 hover:bg-amber-600',
+};
+function linkKind(univ: string, universities: UniversityRegistry): LinkKind {
+  const r = resolveUniv(univ, universities[univ]);
+  return r.url ? 'url' : r.home ? 'home' : 'none';
+}
+
+function UnivHeaderLinks({ univ, universities, schedule, onSetUnivUrl }: Props & { univ: string }) {
+  const info = universities[univ];
+  const r = resolveUniv(univ, info);
+  const next = nextEventFor(univ, schedule);
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      {next && (
+        <span className="rounded-md bg-indigo-50 px-2 py-1 text-xs font-medium text-indigo-700" title={next.memo}>
+          📅 {shortDate(next.date)} {next.title}
+        </span>
+      )}
+      {info?.memo && <span className="hidden max-w-[14rem] truncate text-xs text-slate-500 md:inline">📝 {info.memo}</span>}
+      {r.plan && (
+        <button className={btn.chip} onClick={() => openExternal(r.plan)} title="2027학년도 대학입학전형 시행계획">
+          📄 시행계획
+        </button>
+      )}
+      {r.home && (
+        <button className={btn.chip} onClick={() => openExternal(r.home)}>
+          🏫 입학처
+        </button>
+      )}
+      {r.url ? (
+        <button className={btn.chip} onClick={() => openExternal(r.url)}>
+          🔗 조회 페이지
+        </button>
+      ) : (
+        <button
+          className={`${btn.chip} border-amber-300 bg-amber-50 text-amber-800`}
+          onClick={() => askUnivUrl(univ, '', onSetUnivUrl)}
+        >
+          ⚠️ 조회 주소 등록
+        </button>
+      )}
+    </div>
   );
 }

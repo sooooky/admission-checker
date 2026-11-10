@@ -47,9 +47,35 @@ export interface VaultData {
 
 /** 대학별 조회 주소 (개인정보 아님 → 암호화하지 않음) */
 export interface UniversityInfo {
-  url: string;
+  url: string; // 합격자 조회 페이지
+  memo: string;
+  /** 입학처 홈페이지 (비우면 내장 대학 목록에서 자동) */
+  home?: string;
+  /** 모집요강·시행계획 링크 (비우면 내장 대학 목록에서 자동) */
+  plan?: string;
+  /** 내장 목록에서 캠퍼스 등을 직접 고른 경우 그 이름 */
+  dirName?: string;
+}
+
+/** 발표·등록 일정 (개인정보 아님) */
+export interface ScheduleEvent {
+  id: string;
+  univ: string; // 공통 일정은 ''
+  date: string; // YYYY-MM-DD
+  endDate: string; // 기간 일정의 마지막 날 (없으면 '')
+  time: string; // HH:MM (없으면 '')
+  title: string;
   memo: string;
 }
+
+export const EVENT_PRESETS = [
+  '최초합격 발표',
+  ...Array.from({ length: 8 }, (_, i) => `${i + 1}차 충원 발표`),
+  '합격자 등록',
+  '충원 등록 마감',
+  '면접·실기·논술',
+  '서류 제출',
+] as const;
 export type UniversityRegistry = Record<string, UniversityInfo>;
 
 export const emptyVault = (): VaultData => ({ version: 1, students: [], applications: [] });

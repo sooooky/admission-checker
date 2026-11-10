@@ -12,7 +12,9 @@
 - `src/lib/excel.ts`: ExcelJS(동적 import)로 읽기/쓰기, 열 자동 매핑(`guessMapping`).
 - `src/lib/autofill.ts`: 자동입력 코드 인코딩 + 북마클릿. `admchkAutofill` 함수는 `toString()` 으로 북마클릿이 되므로 외부 참조 금지.
 - 결과는 `Application.history`(차수별 `ResultEntry`, 0=최초 발표, n=n차 충원)가 원본이고, `status/waitNo/round/checkedAt` 은 `withHistory()` 로 계산되는 값. 결과 변경은 `recordRound()` 사용. 예전 데이터는 `migrateVault()` 로 변환.
-- 대학 조회 주소(`admchk_universities_v1`)와 설정은 개인정보가 아니므로 평문 저장.
+- 대학 조회 주소(`admchk_universities_v1`), 일정(`admchk_schedule_v1`), 설정은 개인정보가 아니므로 평문 저장.
+- `src/data/univDirectory.ts`: 내장 4년제 대학 목록(입학처·시행계획 링크). 대학명 매칭은 `lib/univLookup.ts`의 `findUniversity`/`resolveUniv`(캠퍼스·줄임말 처리).
+- `src/data/commonSchedule.ts`: 전국 공통 일정. 학년도가 바뀌면 이 두 파일을 갱신.
 
 ## 원칙
 - 학생 개인정보를 외부로 전송하는 코드를 추가하지 말 것. 배포 빌드의 CSP(`vite.config.ts`)는 `connect-src 'none'`.
