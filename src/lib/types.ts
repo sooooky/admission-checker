@@ -61,17 +61,17 @@ export function parseMinReq(raw: string): MinReq {
   return '확인필요';
 }
 
-/** 발표 차수: 0 = 최초 발표, n = n차 충원 */
+/** 결과 기록 한 건. history 배열의 순서 = 기록한 시간 순서 (마지막이 현재 상태) */
 export interface ResultEntry {
-  round: number;
   status: Exclude<Status, '미조회'>;
   waitNo: string;
-  at: string; // ISO, 기록한 시각
+  at: string; // ISO, 기록(확인)한 시각
+  /** 예전 버전의 발표 차수 (0 = 최초, n = n차 충원). 새 기록에는 없음 */
+  round?: number;
 }
 
-export const MAX_ROUND = 20;
-export const roundLabel = (r: number) => (r === 0 ? '최초' : `${r}차`);
-export const roundLongLabel = (r: number) => (r === 0 ? '최초 발표' : `${r}차 충원`);
+/** 이 시간(분) 안에 다시 기록하면 새로 쌓지 않고 마지막 기록을 고칩니다 (오타 수정용) */
+export const AMEND_MINUTES = 30;
 
 export interface Application {
   id: string;
@@ -97,7 +97,8 @@ export interface Application {
 
 /** 암호화되어 저장되는 개인정보 */
 export interface VaultData {
-  version: 1;
+  /** 2: 결과 기록이 시간순(history 배열 순서) */
+  version: 1 | 2;
   students: Student[];
   applications: Application[];
 }
@@ -135,51 +136,81 @@ export const EVENT_PRESETS = [
 ] as const;
 export type UniversityRegistry = Record<string, UniversityInfo>;
 
-export const emptyVault = (): VaultData => ({ version: 1, students: [], applications: [] });
+export const emptyVault = (): VaultData => ({ version: 2, students: [], applications: [] });
 
 export const newId = () => crypto.randomUUID();
 
-/** history 로부터 현재 상태 필드를 다시 계산 */
+/** history(시간순)로부터 현재 상태 필드를 다시 계산 */
 export function withHistory(app: Application, history: ResultEntry[]): Application {
-  const sorted = [...history].sort((a, b) => a.round - b.round);
-  const last = sorted[sorted.length - 1];
+  const last = history[history.length - 1];
   if (!last) return { ...app, history: [], status: '미조회', waitNo: '', round: '', checkedAt: null };
   return {
     ...app,
-    history: sorted,
+    history,
     status: last.status,
     waitNo: last.status === '예비' ? last.waitNo : '',
-    round: last.status === '충원합격' && last.round > 0 ? String(last.round) : '',
+    round: last.status === '충원합격' && last.round ? String(last.round) : '',
     checkedAt: last.at,
   };
 }
 
-/** 이 차수의 결과를 기록(덮어쓰기). status 가 null 이면 이 차수 기록 삭제 */
-export function recordRound(app: Application, round: number, status: ResultEntry['status'] | null, waitNo?: string): Application {
-  const rest = app.history.filter((h) => h.round !== round);
-  if (!status) return withHistory(app, rest);
-  const prev = app.history.find((h) => h.round === round);
-  const entry: ResultEntry = {
-    round,
-    status,
-    waitNo: status === '예비' ? (waitNo ?? (prev?.status === '예비' ? prev.waitNo : '')) : '',
-    at: new Date().toISOString(),
-  };
-  return withHistory(app, [...rest, entry]);
+const recentlyRecorded = (h: ResultEntry | undefined) =>
+  !!h && Date.now() - new Date(h.at).getTime() < AMEND_MINUTES * 60_000;
+
+/**
+ * 결과를 기록합니다. 이전 기록은 지우지 않고 뒤에 쌓습니다.
+ * - 마지막 기록과 같은 내용이면 아무것도 하지 않음
+ * - 마지막 기록이 AMEND_MINUTES 안에 남긴 것이면 새로 쌓지 않고 고침 (오타·잘못 누름 수정)
+ */
+export function recordResult(app: Application, status: ResultEntry['status'], waitNo = ''): Application {
+  const history = [...app.history];
+  const last = history[history.length - 1];
+  const no = status === '예비' ? waitNo : '';
+  if (last && last.status === status && last.waitNo === no) return app;
+  const entry: ResultEntry = { status, waitNo: no, at: new Date().toISOString() };
+  // 예비 버튼만 누르고 번호를 아직 안 적은 기록에 번호를 채우는 경우도 고침으로 처리
+  if (recentlyRecorded(last) || (last?.status === '예비' && status === '예비' && !last.waitNo)) history[history.length - 1] = entry;
+  else history.push(entry);
+  return withHistory(app, history);
 }
+
+/** 방금(AMEND_MINUTES 안) 남긴 마지막 기록을 취소합니다. 오래된 기록은 수정 창에서 지웁니다. */
+export function undoLast(app: Application): Application | null {
+  const last = app.history[app.history.length - 1];
+  if (!recentlyRecorded(last)) return null;
+  return withHistory(app, app.history.slice(0, -1));
+}
+
+const md = (iso: string) => {
+  const d = new Date(iso);
+  return `${d.getMonth() + 1}/${d.getDate()}`;
+};
+export const entryDate = (h: ResultEntry) => md(h.at);
 
 export const entryText = (h: ResultEntry) =>
   h.status === '예비' ? `예비${h.waitNo ? ' ' + h.waitNo : ''}` : h.status === '충원합격' ? '충원합격' : h.status;
 
-export const historyText = (app: Application) =>
-  app.history.map((h) => `${roundLabel(h.round)} ${entryText(h)}`).join(' → ');
+export const historyText = (app: Application) => app.history.map((h) => `${md(h.at)} ${entryText(h)}`).join(' → ');
+
+/** 오늘 기록(확인)한 적이 있는지 */
+export const checkedToday = (a: Application) => {
+  const last = a.history[a.history.length - 1];
+  return !!last && new Date(last.at).toDateString() === new Date().toDateString();
+};
 
 /** 이전 버전 데이터(history 없음)를 새 구조로 변환 */
 export function migrateVault(d: VaultData): VaultData {
+  const v1 = d.version !== 2;
   return {
     ...d,
+    version: 2,
     applications: d.applications.map((a) => {
-      if (Array.isArray(a.history)) return a;
+      if (Array.isArray(a.history)) {
+        // 버전 1: 차수 순서로 정렬해 두고, 이후로는 배열 순서를 시간순으로 사용
+        if (!v1) return a;
+        const sorted = [...a.history].sort((x, y) => (x.round ?? 0) - (y.round ?? 0) || x.at.localeCompare(y.at));
+        return withHistory(a, sorted);
+      }
       const history: ResultEntry[] =
         a.status && a.status !== '미조회'
           ? [

@@ -313,7 +313,6 @@ export default function App() {
               settings={settings}
               hideInfo={hideInfo}
               onChangeApp={changeApp}
-              onRoundChange={(r) => setSettings((s) => ({ ...s, currentRound: r }))}
               schedule={schedule}
               onSetUnivUrl={setUnivUrl}
               onEdit={(a) => setModal({ edit: a })}
@@ -326,7 +325,6 @@ export default function App() {
           <WaitlistView
             students={data.students}
             applications={data.applications}
-            currentRound={settings.currentRound}
             hideInfo={hideInfo}
             onEdit={(a) => setModal({ edit: a })}
           />
