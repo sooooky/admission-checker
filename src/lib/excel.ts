@@ -47,13 +47,38 @@ function valueToString(v: ExcelJSType.CellValue, numFmt?: string): string {
   return '';
 }
 
+/** xlsx(zip) 안의 문서 속성 파일을 제거합니다. 시트 데이터는 그대로 둡니다. */
+async function stripDocProps(buf: ArrayBuffer): Promise<ArrayBuffer> {
+  const { default: JSZip } = await import('jszip');
+  const zip = await JSZip.loadAsync(buf);
+  for (const name of Object.keys(zip.files)) {
+    if (/^\/?docProps\//i.test(name)) zip.remove(name);
+  }
+  return zip.generateAsync({ type: 'arraybuffer' });
+}
+
 export async function readWorkbook(file: File): Promise<SheetData[]> {
   if (!/\.xlsx$/i.test(file.name)) {
     throw new Error('.xlsx 형식만 지원합니다. 엑셀에서 "다른 이름으로 저장 → Excel 통합 문서(*.xlsx)"로 저장해 주세요.');
   }
   const ExcelJS = await loadExcelJS();
-  const wb = new ExcelJS.Workbook();
-  await wb.xlsx.load(await file.arrayBuffer());
+  const buf = await file.arrayBuffer();
+  let wb = new ExcelJS.Workbook();
+  try {
+    await wb.xlsx.load(buf);
+  } catch (first) {
+    // NEIS·한셀 등 다른 프로그램이 만든 파일은 "문서 속성"(docProps) 형식 차이로 읽기에 실패하는 경우가 있습니다.
+    // 학생 데이터와 무관한 문서 속성만 빼고 다시 읽습니다. (브라우저 안에서만 처리)
+    try {
+      wb = new ExcelJS.Workbook();
+      await wb.xlsx.load(await stripDocProps(buf));
+    } catch {
+      console.warn('엑셀 읽기 실패', first);
+      throw new Error(
+        '이 엑셀 파일을 읽지 못했습니다. 엑셀(또는 한셀)에서 파일을 연 뒤 "다른 이름으로 저장 → Excel 통합 문서(*.xlsx)"로 다시 저장해서 올려 주세요.',
+      );
+    }
+  }
   const sheets: SheetData[] = [];
   wb.eachSheet((ws) => {
     const grid: string[][] = [];
