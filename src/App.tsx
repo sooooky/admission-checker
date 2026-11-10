@@ -255,6 +255,22 @@ export default function App() {
     );
   }
 
+  // 조회 목록·오늘 할 일에서 같은 원서 줄(조회·복사·결과 기록)을 쓰기 위한 공통 속성
+  const rowProps = {
+    students: data.students,
+    applications: data.applications,
+    universities,
+    settings,
+    hideInfo,
+    schedule: allSchedule,
+    onChangeApp: changeApp,
+    onSetUnivUrl: setUnivUrl,
+    onEdit: (a: Application) => setModal({ edit: a }),
+    onAddSibling: addSibling,
+    onSetEnrolled: setEnrolled,
+    onAdd: () => setModal({ edit: null }),
+  };
+
   const tabs: [Tab, string][] = [
     ['today', '오늘 할 일'],
     ['list', '조회 목록'],
@@ -320,20 +336,7 @@ export default function App() {
               </button>
             </div>
           ) : (
-            <ApplicationsView
-              students={data.students}
-              applications={data.applications}
-              universities={universities}
-              settings={settings}
-              hideInfo={hideInfo}
-              onChangeApp={changeApp}
-              schedule={allSchedule}
-              onSetUnivUrl={setUnivUrl}
-              onEdit={(a) => setModal({ edit: a })}
-              onAddSibling={addSibling}
-              onSetEnrolled={setEnrolled}
-              onAdd={() => setModal({ edit: null })}
-            />
+            <ApplicationsView {...rowProps} />
           ))}
         {tab === 'wait' && (
           <WaitlistView
@@ -344,17 +347,7 @@ export default function App() {
           />
         )}
         {tab === 'today' && (
-          <TodayView
-            students={data.students}
-            applications={data.applications}
-            universities={universities}
-            schedule={allSchedule}
-            settings={settings}
-            hideInfo={hideInfo}
-            onNavigate={setTab}
-            onSetUnivUrl={setUnivUrl}
-            onEdit={(a) => setModal({ edit: a })}
-          />
+          <TodayView {...rowProps} onNavigate={setTab} />
         )}
         {tab === 'stats' && <StatsView data={data} />}
         {tab === 'calendar' && (
