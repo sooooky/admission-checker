@@ -14,12 +14,15 @@ export function UniversitiesView({
   applications,
   universities,
   schedule,
+  builtin,
   onChange,
   onChangeSchedule,
 }: {
   applications: Application[];
   universities: UniversityRegistry;
   schedule: ScheduleEvent[];
+  /** 모집요강 내장 일정 (표시용) */
+  builtin: ScheduleEvent[];
   onChange: (next: UniversityRegistry) => void;
   onChangeSchedule: (next: ScheduleEvent[]) => void;
 }) {
@@ -58,9 +61,9 @@ export function UniversitiesView({
     const applied = [...new Set(applications.map((a) => a.university))];
     return {
       noLink: applied.filter((n) => !resolveUniv(n, universities[n]).home).length,
-      noEvent: applied.filter((n) => !schedule.some((e) => e.univ === n)).length,
+      noEvent: applied.filter((n) => ![...schedule, ...builtin].some((e) => e.univ === n)).length,
     };
-  }, [applications, universities, schedule]);
+  }, [applications, universities, schedule, builtin]);
 
   const importFile = async (file: File | undefined) => {
     if (!file) return;
@@ -80,6 +83,9 @@ export function UniversitiesView({
           home: safe(v?.home) || cur.home,
           plan: safe(v?.plan) || cur.plan,
           dirName: typeof v?.dirName === 'string' ? v.dirName : cur.dirName,
+          hiddenBuiltin: Array.isArray(v?.hiddenBuiltin)
+            ? v.hiddenBuiltin.filter((x: unknown): x is string => typeof x === 'string').slice(0, 500)
+            : cur.hiddenBuiltin,
         };
         n++;
       }
@@ -157,7 +163,7 @@ export function UniversitiesView({
             key={r.name}
             row={r}
             info={universities[r.name] ?? { url: '', memo: '' }}
-            schedule={schedule}
+            schedule={[...schedule, ...builtin]}
             onUpdate={(patch) => update(r.name, patch)}
             onAddEvent={() =>
               setEditingEvent({ id: newId(), univ: r.name, date: ymd(new Date()), endDate: '', time: '', title: '최초합격 발표', memo: '' })
@@ -302,7 +308,9 @@ function UnivRow({
       )}
 
       <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs">
-        <span className="text-slate-500">📅 일정 {events.length}개</span>
+        <span className="text-slate-500">
+          📅 일정 {events.length}개{events.some((e) => e.builtin) && ` (모집요강 ${events.filter((e) => e.builtin).length})`}
+        </span>
         {next && (
           <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-indigo-700">
             다음: {shortDate(next.date)} {next.title}
@@ -312,6 +320,11 @@ function UnivRow({
         <button className="rounded px-1.5 py-0.5 font-medium text-blue-700 hover:bg-blue-50" onClick={onAddEvent}>
           + 일정 추가
         </button>
+        {(info.hiddenBuiltin?.length ?? 0) > 0 && (
+          <button className="rounded px-1.5 py-0.5 text-slate-500 underline" onClick={() => onUpdate({ hiddenBuiltin: [] })}>
+            숨긴 모집요강 일정 {info.hiddenBuiltin!.length}개 다시 보기
+          </button>
+        )}
       </div>
     </div>
   );

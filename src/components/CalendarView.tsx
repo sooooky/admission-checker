@@ -3,6 +3,7 @@ import type { Application, ScheduleEvent, Student, UniversityRegistry } from '..
 import { EVENT_PRESETS, newId } from '../lib/types';
 import { COMMON_SCHEDULE } from '../data/commonSchedule';
 import { DIRECTORY } from '../lib/univLookup';
+import { builtinEvents } from '../lib/builtinSchedule';
 import { maskName, normalizeUniv } from '../lib/format';
 import { STATUS_STYLE } from './status';
 import { openLookup } from './ApplicationsView';
@@ -56,6 +57,7 @@ interface Props {
   hideInfo: boolean;
   onChangeSchedule: (next: ScheduleEvent[]) => void;
   onSetUnivUrl: (univ: string, url: string) => void;
+  onHideBuiltin: (univ: string, eventId: string) => void;
 }
 
 export function CalendarView(p: Props) {
@@ -68,14 +70,22 @@ export function CalendarView(p: Props) {
   const [showCommon, setShowCommon] = useState(true);
   const [onlyApplied, setOnlyApplied] = useState(false);
   const [editing, setEditing] = useState<ScheduleEvent | null>(null);
+  /** 내장 일정을 '내 일정으로 수정' 중이면 원래 내장 일정 */
+  const [editingFrom, setEditingFrom] = useState<ScheduleEvent | null>(null);
+  const [showAllBuiltin, setShowAllBuiltin] = useState(false);
 
   const appliedUnivs = useMemo(() => new Set(p.applications.map((a) => a.university)), [p.applications]);
+  const builtin = useMemo(
+    () => builtinEvents([...appliedUnivs, ...Object.keys(p.universities)], p.universities, showAllBuiltin),
+    [appliedUnivs, p.universities, showAllBuiltin],
+  );
   const events = useMemo(
     () =>
-      [...(showCommon ? COMMON_SCHEDULE : []), ...p.schedule.filter((e) => !onlyApplied || appliedUnivs.has(e.univ))].sort((a, b) =>
-        (a.date + (a.time || '99') + a.univ).localeCompare(b.date + (b.time || '99') + b.univ),
-      ),
-    [p.schedule, showCommon, onlyApplied, appliedUnivs],
+      [
+        ...(showCommon ? COMMON_SCHEDULE : []),
+        ...[...p.schedule, ...builtin].filter((e) => !onlyApplied || appliedUnivs.has(e.univ)),
+      ].sort((a, b) => (a.date + (a.time || '99') + a.univ).localeCompare(b.date + (b.time || '99') + b.univ)),
+    [p.schedule, builtin, showCommon, onlyApplied, appliedUnivs],
   );
 
   const upcoming = events.filter((e) => endOf(e) >= today).slice(0, 8);
@@ -116,6 +126,9 @@ export function CalendarView(p: Props) {
             </label>
             <label className="flex items-center gap-1.5">
               <input type="checkbox" checked={onlyApplied} onChange={(e) => setOnlyApplied(e.target.checked)} /> 학생이 지원한 대학만
+            </label>
+            <label className="flex items-center gap-1.5" title="학생이 지원하지 않은 대학의 모집요강 최초합격 발표일도 모두 표시">
+              <input type="checkbox" checked={showAllBuiltin} onChange={(e) => setShowAllBuiltin(e.target.checked)} /> 모든 대학 모집요강 일정
             </label>
             <button className={btn.primary} onClick={() => setEditing(newEvent())}>
               + 일정 추가
@@ -232,13 +245,26 @@ export function CalendarView(p: Props) {
                   <span className="font-semibold">{eventLabel(e)}</span>
                   {e.endDate && <span className="text-xs">~ {shortDate(e.endDate)}</span>}
                   {!e.univ && <span className="rounded bg-white/70 px-1.5 text-[11px]">전국 공통</span>}
+                  {e.builtin && <span className="rounded bg-white/70 px-1.5 text-[11px]">모집요강</span>}
                   {e.univ && (
                     <span className="ml-auto flex gap-1">
-                      <button className={btn.chip} onClick={() => setEditing(e)}>
+                      <button
+                        className={btn.chip}
+                        onClick={() => {
+                          if (e.builtin) {
+                            setEditingFrom(e);
+                            setEditing({ ...e, id: newId(), builtin: undefined, memo: e.memo.replace(/^📄 모집요강[^:]*:\s*/, '모집요강: ') });
+                          } else setEditing(e);
+                        }}
+                        title={e.builtin ? '내 일정으로 복사해서 고칩니다 (원래 모집요강 일정은 숨김)' : ''}
+                      >
                         수정
                       </button>
-                      <button className={`${btn.chip} text-red-600`} onClick={() => remove(e)}>
-                        삭제
+                      <button
+                        className={`${btn.chip} text-red-600`}
+                        onClick={() => (e.builtin ? p.onHideBuiltin(e.univ, e.id) : remove(e))}
+                      >
+                        {e.builtin ? '숨기기' : '삭제'}
                       </button>
                     </span>
                   )}
@@ -280,9 +306,16 @@ export function CalendarView(p: Props) {
           event={editing}
           isNew={!p.schedule.some((e) => e.id === editing.id)}
           univOptions={[...new Set([...appliedUnivs, ...Object.keys(p.universities), ...DIRECTORY.map((d) => d.name)])]}
-          onClose={() => setEditing(null)}
+          onClose={() => {
+            setEditing(null);
+            setEditingFrom(null);
+          }}
           onSave={(ev, keepGoing) => {
             save(ev);
+            if (editingFrom) {
+              p.onHideBuiltin(editingFrom.univ, editingFrom.id);
+              setEditingFrom(null);
+            }
             toast('일정을 저장했습니다');
             if (keepGoing) {
               setEditing({ ...ev, id: newId(), title: nextPreset(ev.title), endDate: '', memo: '' });
