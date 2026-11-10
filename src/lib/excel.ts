@@ -85,7 +85,6 @@ export async function readWorkbook(file: File): Promise<SheetData[]> {
 
 export interface AppGroup {
   univ: number;
-  track: number;
   major: number;
   examNo: number;
 }
@@ -95,15 +94,15 @@ export interface ColumnMapping {
   phone: number;
   groups: AppGroup[];
 }
-export const emptyGroup = (): AppGroup => ({ univ: -1, track: -1, major: -1, examNo: -1 });
+export const emptyGroup = (): AppGroup => ({ univ: -1, major: -1, examNo: -1 });
 
-type Field = 'name' | 'birth' | 'phone' | 'univ' | 'track' | 'major' | 'examNo';
+type Field = 'name' | 'birth' | 'phone' | 'univ' | 'major' | 'examNo';
 
 function classify(header: string): Field | null {
   const h = header.replace(/\s|\(|\)|\[|\]|_/g, '').toLowerCase();
   if (/보호자|학부모|부모|담임/.test(h)) return null;
   if (/수험번호|수험|접수번호|exam/.test(h)) return 'examNo';
-  if (/전형/.test(h)) return 'track';
+  if (/전형/.test(h)) return null; // 전형은 사용하지 않음
   if (/모집단위|학과|학부|전공|계열|major/.test(h)) return 'major';
   if (/생년월일|생일|birth|주민/.test(h)) return 'birth';
   if (/핸드폰|휴대폰|휴대전화|전화|연락처|phone|mobile|^hp/.test(h)) return 'phone';
@@ -185,7 +184,7 @@ export function buildImport(
         id: newId(),
         studentId: student.id,
         university,
-        track: get(row, g.track),
+        track: '',
         major: get(row, g.major),
         examNo: get(row, g.examNo).replace(/\s/g, ''),
         status: '미조회',
@@ -231,7 +230,6 @@ export async function exportResults(data: VaultData, opts: { includePhone: boole
     ...(opts.includeBirth ? [{ header: '생년월일', key: 'birth', width: 12 }] : []),
     ...(opts.includePhone ? [{ header: '핸드폰', key: 'phone', width: 15 }] : []),
     { header: '대학', key: 'univ', width: 18 },
-    { header: '전형', key: 'track', width: 16 },
     { header: '모집단위', key: 'major', width: 18 },
     { header: '수험번호', key: 'examNo', width: 14 },
     { header: '결과', key: 'status', width: 10 },
@@ -253,7 +251,6 @@ export async function exportResults(data: VaultData, opts: { includePhone: boole
       birth: s ? formatBirth(s.birth) : '',
       phone: s ? formatPhone(s.phone) : '',
       univ: a.university,
-      track: a.track,
       major: a.major,
       examNo: a.examNo,
       status: a.status,
@@ -325,15 +322,15 @@ export async function exportResults(data: VaultData, opts: { includePhone: boole
 }
 
 // 샘플 파일의 예시 데이터 (모두 가상의 학생·대학입니다)
-const SAMPLE_STUDENTS: { name: string; birth: string; phone: string; apps: [string, string, string, string][] }[] = [
+const SAMPLE_STUDENTS: { name: string; birth: string; phone: string; apps: [string, string, string][] }[] = [
   {
     name: '김예시',
     birth: '070315',
     phone: '010-0000-0001',
     apps: [
-      ['가나대학교', '학생부종합', '경영학과', '10000001'],
-      ['다라대학교', '학생부교과', '경영학부', 'A2000002'],
-      ['마바대학교', '논술', '경제학과', '00301234'],
+      ['가나대학교', '경영학과', '10000001'],
+      ['다라대학교', '경영학부', 'A2000002'],
+      ['마바대학교', '경제학과', '00301234'],
     ],
   },
   {
@@ -341,10 +338,10 @@ const SAMPLE_STUDENTS: { name: string; birth: string; phone: string; apps: [stri
     birth: '071102',
     phone: '010-0000-0002',
     apps: [
-      ['사아전문대학', '일반고 특별전형', '간호학과', '27001001'],
-      ['자차전문대학', '일반전형', '물리치료과', '27002002'],
-      ['카타대학교', '학생부교과', '보건행정학과', 'B3000003'],
-      ['파하전문대학', '면접전형', '치위생과', '27003003'],
+      ['사아전문대학', '간호학과', '27001001'],
+      ['자차전문대학', '물리치료과', '27002002'],
+      ['카타대학교', '보건행정학과', 'B3000003'],
+      ['파하전문대학', '치위생과', '27003003'],
     ],
   },
   {
@@ -352,8 +349,8 @@ const SAMPLE_STUDENTS: { name: string; birth: string; phone: string; apps: [stri
     birth: '060820',
     phone: '',
     apps: [
-      ['가나대학교', '실기위주', '시각디자인과', '10000077'],
-      ['다라대학교', '학생부종합', '산업디자인학과', 'A2000099'],
+      ['가나대학교', '시각디자인과', '10000077'],
+      ['다라대학교', '산업디자인학과', 'A2000099'],
     ],
   },
 ];
@@ -373,8 +370,8 @@ export async function downloadTemplate() {
     ['사용 방법', '양식A 또는 양식B 중 편한 시트 하나에 학생 정보를 입력한 뒤, 앱의 [엑셀 불러오기]에서 이 파일을 선택하세요.'],
     ['예시 행', '각 시트의 예시(김예시·이연습·박샘플)는 가상의 학생·대학입니다. 지우고 실제 학생 정보를 입력하세요.'],
     ['양식A', '원서 1건 = 1줄. 원서가 많은 학생(전문대 포함 10~20개)도 줄만 추가하면 되어 가장 편합니다.'],
-    ['양식B', '학생 1명 = 1줄. 대학1·전형1·모집단위1·수험번호1 … 처럼 번호를 붙여 옆으로 나열합니다. 대학7, 대학8 … 처럼 열을 더 붙여도 됩니다.'],
-    ['필수 열', '이름, 대학(대학명). 나머지(생년월일·핸드폰·전형·모집단위·수험번호)는 비어 있어도 됩니다.'],
+    ['양식B', '학생 1명 = 1줄. 대학1·모집단위1·수험번호1 … 처럼 번호를 붙여 옆으로 나열합니다. 대학7, 대학8 … 처럼 열을 더 붙여도 됩니다.'],
+    ['필수 열', '이름, 대학(대학명). 나머지(생년월일·핸드폰·모집단위·수험번호)는 비어 있어도 됩니다.'],
     ['열 순서', '열 순서는 상관없습니다. 앱이 열 이름(머리글)을 보고 자동으로 맞추며, 불러오기 화면에서 직접 바꿀 수도 있습니다.'],
     ['생년월일', '070315, 20070315, 2007-03-15, 2007.3.15 모두 가능합니다.'],
     ['핸드폰', '학생 본인 번호. 대학 조회에 휴대폰 번호가 필요한 경우에만 쓰입니다. 010-1234-5678 또는 01012345678.'],
@@ -389,20 +386,20 @@ export async function downloadTemplate() {
 
   // ── 양식A: 원서별 한 줄 ──
   const a = wb.addWorksheet('양식A_원서별 한줄');
-  a.columns = ['이름', '생년월일', '핸드폰', '대학명', '전형명', '모집단위', '수험번호'].map((h) => ({
+  a.columns = ['이름', '생년월일', '핸드폰', '대학명', '모집단위', '수험번호'].map((h) => ({
     header: h,
-    width: h === '대학명' || h === '모집단위' || h === '전형명' ? 18 : 14,
+    width: h === '대학명' || h === '모집단위' ? 18 : 14,
     style: text,
   }));
-  for (const s of SAMPLE_STUDENTS) for (const [u, t, m, e] of s.apps) a.addRow([s.name, s.birth, s.phone, u, t, m, e]);
+  for (const s of SAMPLE_STUDENTS) for (const [u, m, e] of s.apps) a.addRow([s.name, s.birth, s.phone, u, m, e]);
   styleHeader(a);
 
   // ── 양식B: 학생별 한 줄 ──
   const b = wb.addWorksheet('양식B_학생별 한줄');
   const groups = Math.max(6, ...SAMPLE_STUDENTS.map((s) => s.apps.length));
   const headers = ['이름', '생년월일', '핸드폰'];
-  for (let i = 1; i <= groups; i++) headers.push(`대학${i}`, `전형${i}`, `모집단위${i}`, `수험번호${i}`);
-  b.columns = headers.map((h) => ({ header: h, width: /^대학|^모집|^전형/.test(h) ? 15 : 12, style: text }));
+  for (let i = 1; i <= groups; i++) headers.push(`대학${i}`, `모집단위${i}`, `수험번호${i}`);
+  b.columns = headers.map((h) => ({ header: h, width: /^대학|^모집/.test(h) ? 15 : 12, style: text }));
   for (const s of SAMPLE_STUDENTS) b.addRow([s.name, s.birth, s.phone, ...s.apps.flat()]);
   styleHeader(b);
   b.views = [{ state: 'frozen', xSplit: 1, ySplit: 1 }];
