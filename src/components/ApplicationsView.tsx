@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react';
 import type { Application, ScheduleEvent, Status, Student, UniversityRegistry } from '../lib/types';
-import { MAX_ROUND, STATUSES, entryText, recordRound, roundLabel, roundLongLabel } from '../lib/types';
+import { MAX_ROUND, STATUSES, admLabel, admTypeOf, entryText, hasMinReq, nextMinReq, recordRound, roundLabel, roundLongLabel, type MinReq } from '../lib/types';
 import { birthAs, formatBirth, formatDateTime, maskName, maskPhone } from '../lib/format';
 import { encodePayload } from '../lib/autofill';
 import type { Settings } from '../lib/storage';
 import { STATUS_STYLE } from './status';
 import { resolveUniv } from '../lib/univLookup';
+import { isPass, studentInsight, type StudentInsight } from '../lib/insights';
 import { nextEventFor, shortDate } from './CalendarView';
 import { btn, copyText, inputCls, toast } from './ui';
 
@@ -22,6 +23,7 @@ interface Props {
   onEdit: (app: Application) => void;
   onAddSibling: (app: Application) => void;
   onAdd: () => void;
+  onSetEnrolled: (studentId: string, appId: string | null) => void;
 }
 
 /** 이번 차수에 확인이 필요한 원서: 아직 결과가 확정되지 않았고 이번 차수 기록이 없는 것 */
@@ -87,8 +89,9 @@ export function askUnivUrl(univ: string, current: string, onSet: (univ: string, 
 
 export function ApplicationsView(p: Props) {
   const [groupBy, setGroupBy] = useState<'univ' | 'student'>('univ');
+  const [admFilter, setAdmFilter] = useState<'전체' | '수시' | '정시·추가'>('전체');
   const [query, setQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<Status | '전체' | '이번차수'>('전체');
+  const [statusFilter, setStatusFilter] = useState<Status | '전체' | '이번차수' | '최저확인필요' | '최저미충족'>('전체');
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
 
   const studentById = useMemo(() => new Map(p.students.map((s) => [s.id, s])), [p.students]);
@@ -96,14 +99,20 @@ export function ApplicationsView(p: Props) {
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return p.applications.filter((a) => {
+      if (admFilter === '수시' && admTypeOf(a) !== '수시') return false;
+      if (admFilter === '정시·추가' && admTypeOf(a) === '수시') return false;
       if (statusFilter === '이번차수') {
         if (!needsCheck(a, p.settings.currentRound)) return false;
+      } else if (statusFilter === '최저확인필요') {
+        if (a.minReq !== '확인필요') return false;
+      } else if (statusFilter === '최저미충족') {
+        if (a.minReq !== '미충족') return false;
       } else if (statusFilter !== '전체' && a.status !== statusFilter) return false;
       if (!q) return true;
       const s = studentById.get(a.studentId);
-      return [s?.name, a.university, a.major, a.examNo].some((x) => x?.toLowerCase().includes(q));
+      return [s?.name, s?.memo, a.university, a.major, a.examNo, a.note].some((x) => x?.toLowerCase().includes(q));
     });
-  }, [p.applications, query, statusFilter, studentById, p.settings.currentRound]);
+  }, [p.applications, query, statusFilter, studentById, p.settings.currentRound, admFilter]);
 
   const groups = useMemo(() => {
     const map = new Map<string, Application[]>();
@@ -132,6 +141,12 @@ export function ApplicationsView(p: Props) {
     p.applications.forEach((a) => m.set(`${a.studentId}|${a.university}`, (m.get(`${a.studentId}|${a.university}`) ?? 0) + 1));
     return m;
   }, [p.applications]);
+
+  const insightById = useMemo(
+    () => new Map(p.students.map((s) => [s.id, studentInsight(s, p.applications)])),
+    [p.students, p.applications],
+  );
+  const hasLater = p.applications.some((a) => admTypeOf(a) !== '수시');
 
   const counts = useMemo(() => {
     const c = Object.fromEntries(STATUSES.map((s) => [s, 0])) as Record<Status, number>;
@@ -194,6 +209,25 @@ export function ApplicationsView(p: Props) {
               {s} {s === '전체' ? total : counts[s]}
             </button>
           ))}
+          {p.applications.some((a) => hasMinReq(a.minReq)) && (
+            <>
+              <span className="mx-1 self-center text-slate-300">|</span>
+              {(
+                [
+                  ['최저확인필요', '최저 확인필요', '확인필요'],
+                  ['최저미충족', '최저 미충족', '미충족'],
+                ] as const
+              ).map(([k, label, m]) => (
+                <button
+                  key={k}
+                  onClick={() => setStatusFilter(statusFilter === k ? '전체' : k)}
+                  className={`rounded-full px-3 py-1 text-xs font-medium ${statusFilter === k ? 'bg-slate-800 text-white' : MIN_STYLE[m]}`}
+                >
+                  {label} {p.applications.filter((a) => a.minReq === m).length}
+                </button>
+              ))}
+            </>
+          )}
         </div>
       </div>
 
@@ -221,6 +255,19 @@ export function ApplicationsView(p: Props) {
             </button>
           ))}
         </div>
+        {hasLater && (
+          <div className="flex rounded-lg border border-slate-300 bg-white p-0.5 text-sm">
+            {(['전체', '수시', '정시·추가'] as const).map((k) => (
+              <button
+                key={k}
+                onClick={() => setAdmFilter(k)}
+                className={`rounded-md px-3 py-1.5 ${admFilter === k ? 'bg-slate-800 text-white' : 'text-slate-600'}`}
+              >
+                {k}
+              </button>
+            ))}
+          </div>
+        )}
         <button className={btn.secondary} onClick={p.onAdd}>
           + 원서 직접 추가
         </button>
@@ -254,8 +301,10 @@ export function ApplicationsView(p: Props) {
                 <span className="text-xs text-slate-500">
                   {p.hideInfo ? '****' : formatBirth(student.birth)}
                   {student.phone && ` · ${maskPhone(student.phone)}`}
+                  {student.memo && <span className="ml-2 rounded bg-yellow-50 px-1.5 py-0.5 text-yellow-800">📝 {student.memo}</span>}
                 </span>
               )}
+              {!isUniv && student && <StudentBadges insight={insightById.get(student.id)} />}
             </header>
             {!isCollapsed && (
               <ul className="divide-y divide-slate-100">
@@ -269,6 +318,7 @@ export function ApplicationsView(p: Props) {
                     student={studentById.get(a.studentId)}
                     showUniv={!isUniv}
                     linkKind={linkKind(a.university, p.universities)}
+                    insight={insightById.get(a.studentId)}
                     {...p}
                     onLookup={() => lookup(a)}
                   />
@@ -296,7 +346,10 @@ function AppRow({
   continued,
   firstExamNo,
   clusterSize,
+  insight,
+  onSetEnrolled,
 }: Props & {
+  insight?: StudentInsight;
   app: Application;
   student?: Student;
   showUniv: boolean;
@@ -327,11 +380,36 @@ function AppRow({
           ) : (
             <span className="font-semibold">{showUniv ? a.university : hideInfo ? maskName(name) : name}</span>
           )}
+          {!continued && !showUniv && insight && insight.warnings.length > 0 && (
+            <span className="cursor-help text-xs text-rose-600" title={insight.warnings.join('\n')}>
+              ⚠️
+            </span>
+          )}
+          {!continued && !showUniv && s?.memo && (
+            <button className="text-xs" title={`학생 메모: ${s.memo}`} onClick={() => onEdit(a)}>
+              📝
+            </button>
+          )}
           <span className={`rounded px-1.5 py-0.5 text-[11px] font-medium ${STATUS_STYLE[a.status].badge}`}>
             {a.status}
             {a.status === '예비' && a.waitNo && ` ${a.waitNo}번`}
             {a.status === '충원합격' && a.round && ` ${a.round}차`}
           </span>
+          {admTypeOf(a) !== '수시' && (
+            <span className="rounded bg-sky-100 px-1.5 py-0.5 text-[11px] font-medium text-sky-800">{admLabel(a)}</span>
+          )}
+          {insight?.enrolled?.id === a.id && (
+            <span className="rounded bg-yellow-300 px-1.5 py-0.5 text-[11px] font-bold text-yellow-900">★ 등록</span>
+          )}
+          {hasMinReq(a.minReq) && (
+            <button
+              className={`rounded px-1.5 py-0.5 text-[11px] font-medium ${MIN_STYLE[a.minReq ?? '']}`}
+              onClick={() => onChangeApp(a.id, (x) => ({ ...x, minReq: nextMinReq(x.minReq) }))}
+              title="수능 최저: 누를 때마다 확인필요 → 충족 → 미충족 (최저 없음으로 되돌리려면 ✎ 수정)"
+            >
+              {MIN_LABEL[a.minReq ?? '']}
+            </button>
+          )}
         </div>
         <p className="truncate text-xs text-slate-500">
           {!continued && (a.major || '모집단위 미입력')}
@@ -426,6 +504,17 @@ function AppRow({
             onChange={(e) => onChangeApp(a.id, (x) => recordRound(x, round, '예비', e.target.value.replace(/[^\d]/g, '')))}
           />
         )}
+        {isPass(a) && s && (
+          <button
+            className={`rounded-md px-1.5 py-1 text-xs font-semibold ${
+              s.enrolledAppId === a.id ? 'bg-yellow-300 text-yellow-900' : 'text-yellow-700 hover:bg-yellow-50'
+            }`}
+            onClick={() => onSetEnrolled(s.id, s.enrolledAppId === a.id ? null : a.id)}
+            title={s.enrolledAppId === a.id ? '등록 대학 표시 해제' : '이 원서를 학생의 최종 등록 대학으로 표시합니다 (학생당 1곳)'}
+          >
+            {s.enrolledAppId === a.id ? '★등록' : '☆등록'}
+          </button>
+        )}
         {!continued && (
           <button
             className="rounded-md px-1.5 py-1 text-xs font-medium text-blue-600 hover:bg-blue-50"
@@ -489,5 +578,41 @@ function UnivHeaderLinks({ univ, universities, schedule, onSetUnivUrl }: Props &
         </button>
       )}
     </div>
+  );
+}
+
+const MIN_STYLE: Record<MinReq, string> = {
+  '': 'border border-dashed border-slate-300 text-slate-400',
+  확인필요: 'bg-amber-100 text-amber-800',
+  충족: 'bg-green-100 text-green-800',
+  미충족: 'bg-rose-100 text-rose-800',
+  해당없음: 'bg-slate-100 text-slate-400',
+};
+const MIN_LABEL: Record<MinReq, string> = {
+  '': '최저 ?',
+  확인필요: '최저 확인',
+  충족: '최저 충족',
+  미충족: '최저 미충족',
+  해당없음: '최저 없음',
+};
+
+export function StudentBadges({ insight }: { insight?: StudentInsight }) {
+  if (!insight) return null;
+  return (
+    <span className="flex flex-wrap items-center gap-1 text-xs">
+      {insight.enrolled ? (
+        <span className="rounded bg-yellow-300 px-1.5 py-0.5 font-bold text-yellow-900">
+          ★ 등록: {insight.enrolled.university}
+          {insight.enrolled.major && ` ${insight.enrolled.major}`}
+        </span>
+      ) : (
+        insight.needsEnrollDecision && <span className="rounded bg-yellow-50 px-1.5 py-0.5 text-yellow-800">합격 {insight.passed.length}곳 · 등록 대학 미정</span>
+      )}
+      {insight.warnings.map((w) => (
+        <span key={w} className="rounded bg-rose-50 px-1.5 py-0.5 text-rose-700">
+          ⚠️ {w}
+        </span>
+      ))}
+    </span>
   );
 }

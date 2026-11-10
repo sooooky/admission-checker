@@ -8,6 +8,57 @@ export interface Student {
   birth: string;
   /** 숫자만 (예: 01012345678). 없으면 빈 문자열 */
   phone: string;
+  /** 학생 메모 (원서와 별개) */
+  memo?: string;
+  /** 최종 등록한 원서 id */
+  enrolledAppId?: string;
+}
+
+export const ADM_TYPES = ['수시', '정시', '추가'] as const;
+export type AdmType = (typeof ADM_TYPES)[number];
+export const GUNS = ['가', '나', '다', '군외'] as const;
+export type Gun = (typeof GUNS)[number] | '';
+export const admTypeOf = (a: { admType?: AdmType }): AdmType => a.admType ?? '수시';
+export const admLabel = (a: { admType?: AdmType; gun?: Gun }) => {
+  const t = admTypeOf(a);
+  if (t === '정시') return a.gun ? (a.gun === '군외' ? '정시 군외' : `정시 ${a.gun}군`) : '정시';
+  return t === '추가' ? '추가모집' : '수시';
+};
+
+/** 엑셀 값 → 모집 시기·군 */
+export function parseAdm(rawType: string, rawGun: string): { admType?: AdmType; gun?: Gun } {
+  const t = rawType.replace(/\s/g, '');
+  const g = rawGun.replace(/\s/g, '');
+  let gun: Gun = '';
+  if (/군외|산업대|전문대/.test(g)) gun = '군외';
+  else if (/^가/.test(g)) gun = '가';
+  else if (/^나/.test(g)) gun = '나';
+  else if (/^다/.test(g)) gun = '다';
+  let admType: AdmType | undefined;
+  if (/추가/.test(t)) admType = '추가';
+  else if (/정시/.test(t)) admType = '정시';
+  else if (/수시/.test(t)) admType = '수시';
+  if (!admType && gun) admType = '정시';
+  // 모집시기 칸에 "가군" 처럼 군이 적힌 경우
+  if (!gun && admType === undefined && /^[가나다]군?$/.test(t)) return { admType: '정시', gun: t[0] as Gun };
+  return { admType, gun: admType === '정시' ? gun : '' };
+}
+
+export const MIN_REQ = ['', '확인필요', '충족', '미충족', '해당없음'] as const;
+export type MinReq = (typeof MIN_REQ)[number];
+/** 수능 최저가 있는 원서인지 ('' 와 '해당없음' 은 최저 없음으로 취급) */
+export const hasMinReq = (m: MinReq | undefined) => m === '확인필요' || m === '충족' || m === '미충족';
+/** 최저가 있는 원서의 칩을 누르면: 확인필요 → 충족 → 미충족 → 확인필요 */
+export const nextMinReq = (m: MinReq | undefined): MinReq => (m === '확인필요' ? '충족' : m === '충족' ? '미충족' : '확인필요');
+
+/** 엑셀 등의 값을 수능 최저 상태로 해석 */
+export function parseMinReq(raw: string): MinReq {
+  const v = raw.replace(/\s/g, '').toLowerCase();
+  if (!v) return '';
+  if (/미충족|불충족|미달|^x$|^×$|^✗$|^no$|^n$/.test(v)) return '미충족';
+  if (/충족|^o$|^○$|^yes$|^y$|통과/.test(v)) return '충족';
+  if (/해당없|없음|^무$|^-$|^없$|미적용/.test(v)) return '해당없음';
+  return '확인필요';
 }
 
 /** 발표 차수: 0 = 최초 발표, n = n차 충원 */
@@ -33,6 +84,12 @@ export interface Application {
   waitNo: string; // 예비 번호
   round: string; // 충원 차수
   note: string;
+  /** 수능 최저학력기준 충족 여부 */
+  minReq?: MinReq;
+  /** 모집 시기 (없으면 수시) */
+  admType?: AdmType;
+  /** 정시 모집군 */
+  gun?: Gun;
   checkedAt: string | null; // ISO
   /** 차수별 결과 기록 (round 오름차순). status/waitNo/round/checkedAt 는 마지막 기록에서 계산됩니다. */
   history: ResultEntry[];

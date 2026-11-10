@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { Application, Student } from '../lib/types';
-import { MAX_ROUND, STATUSES, newId, roundLongLabel, withHistory, type ResultEntry } from '../lib/types';
+import { ADM_TYPES, GUNS, MAX_ROUND, STATUSES, newId, roundLongLabel, withHistory, type ResultEntry } from '../lib/types';
 import { formatBirth, formatPhone, normalizeBirth, normalizePhone, normalizeUniv } from '../lib/format';
 import { Modal, btn, inputCls } from './ui';
 
@@ -24,6 +24,7 @@ export function EditModal({
   const [name, setName] = useState(existing?.name ?? '');
   const [birth, setBirth] = useState(existing ? formatBirth(existing.birth) : '');
   const [phone, setPhone] = useState(existing ? formatPhone(existing.phone) : '');
+  const [memo, setMemo] = useState(existing?.memo ?? '');
   const [a, setA] = useState<Application>(
     app ?? {
       id: newId(),
@@ -52,6 +53,7 @@ export function EditModal({
     setName(s?.name ?? '');
     setBirth(s ? formatBirth(s.birth) : '');
     setPhone(s ? formatPhone(s.phone) : '');
+    setMemo(s?.memo ?? '');
   };
 
   const field = (label: string, el: React.ReactNode) => (
@@ -67,6 +69,7 @@ export function EditModal({
       name: name.trim(),
       birth: normalizeBirth(birth),
       phone: normalizePhone(phone),
+      memo: memo.trim(),
     };
     onSave(
       withHistory(
@@ -102,6 +105,10 @@ export function EditModal({
             {field('생년월일', <input className={inputCls} value={birth} placeholder="2007.03.15" onChange={(e) => setBirth(e.target.value)} />)}
             {field('핸드폰', <input className={inputCls} value={phone} placeholder="010-0000-0000" onChange={(e) => setPhone(e.target.value)} />)}
           </div>
+          {field(
+            '학생 메모 (원서와 별개, 이 학생의 모든 원서에 표시)',
+            <textarea className={inputCls} rows={2} value={memo} placeholder="예: 정시 병행, 등록 의사 확인 필요" onChange={(e) => setMemo(e.target.value)} />,
+          )}
           {base && <p className="text-xs text-slate-500">학생 정보를 고치면 이 학생의 모든 원서에 반영됩니다.</p>}
         </fieldset>
 
@@ -109,6 +116,48 @@ export function EditModal({
           {field('대학 *', <input className={inputCls} value={a.university} onChange={(e) => setA({ ...a, university: e.target.value })} />)}
           {field('수험번호', <input className={inputCls} value={a.examNo} onChange={(e) => setA({ ...a, examNo: e.target.value })} />)}
           {field('모집단위', <input className={inputCls} value={a.major} onChange={(e) => setA({ ...a, major: e.target.value })} />)}
+          {field(
+            '모집 시기',
+            <div className="flex gap-2">
+              <select
+                className={inputCls}
+                value={a.admType ?? '수시'}
+                onChange={(e) => {
+                  const admType = e.target.value as Application['admType'];
+                  setA({ ...a, admType, gun: admType === '정시' ? a.gun : '' });
+                }}
+              >
+                {ADM_TYPES.map((t) => (
+                  <option key={t} value={t}>
+                    {t === '추가' ? '추가모집' : t}
+                  </option>
+                ))}
+              </select>
+              {a.admType === '정시' && (
+                <select className={inputCls} value={a.gun ?? ''} onChange={(e) => setA({ ...a, gun: e.target.value as Application['gun'] })}>
+                  <option value="">군 선택</option>
+                  {GUNS.map((g) => (
+                    <option key={g} value={g}>
+                      {g === '군외' ? '군외 (전문대·산업대 등)' : `${g}군`}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>,
+          )}
+          {field(
+            '수능 최저 (있는 원서만)',
+            <select
+              className={inputCls}
+              value={a.minReq === '해당없음' ? '' : (a.minReq ?? '')}
+              onChange={(e) => setA({ ...a, minReq: e.target.value as Application['minReq'] })}
+            >
+              <option value="">없음 (기본)</option>
+              <option value="확인필요">있음 · 확인필요</option>
+              <option value="충족">있음 · 충족</option>
+              <option value="미충족">있음 · 미충족</option>
+            </select>,
+          )}
         </div>
 
         <fieldset className="space-y-2 rounded-xl bg-slate-50 p-3">
@@ -160,7 +209,7 @@ export function EditModal({
           </button>
         </fieldset>
         {field(
-          '메모',
+          '원서 메모',
           <textarea className={inputCls} rows={2} value={a.note} onChange={(e) => setA({ ...a, note: e.target.value })} />,
         )}
 

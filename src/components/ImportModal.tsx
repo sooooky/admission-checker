@@ -127,12 +127,13 @@ export function ImportModal({
 
             <section>
               <p className="mb-2 text-sm font-semibold">① 학생 정보 열</p>
-              <div className="grid gap-3 sm:grid-cols-3">
+              <div className="grid gap-3 sm:grid-cols-4">
                 {(
                   [
                     ['name', '이름 *', (v: string) => v],
                     ['birth', '생년월일', (v: string) => formatBirth(normalizeBirth(v))],
                     ['phone', '핸드폰 (선택)', (v: string) => maskPhone(normalizePhone(v))],
+                    ['memo', '학생 메모 (선택)', (v: string) => v],
                   ] as const
                 ).map(([key, label, fmt]) => (
                   <div key={key}>
@@ -156,12 +157,15 @@ export function ImportModal({
               </div>
               <div className="space-y-2">
                 {mapping.groups.map((g, gi) => (
-                  <div key={gi} className="grid items-end gap-2 rounded-xl bg-slate-50 p-3 sm:grid-cols-[repeat(3,1fr)_auto]">
+                  <div key={gi} className="grid items-end gap-2 rounded-xl bg-slate-50 p-3 sm:grid-cols-3 lg:grid-cols-[repeat(6,1fr)_auto]">
                     {(
                       [
                         ['univ', '대학 *'],
                         ['major', '모집단위'],
                         ['examNo', '수험번호'],
+                        ['minReq', '수능최저 (선택)'],
+                        ['admType', '모집시기 (선택)'],
+                        ['gun', '정시 군 (선택)'],
                       ] as const
                     ).map(([key, label]) => (
                       <div key={key}>
