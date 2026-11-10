@@ -6,10 +6,12 @@ import {
   emptyGroup,
   guessMapping,
   readWorkbook,
+  ReadError,
   type AppGroup,
   type ColumnMapping,
   type SheetData,
 } from '../lib/excel';
+import { gridToSheet, parseDelimited } from '../lib/sheetSources';
 import { formatBirth, maskPhone, normalizeBirth, normalizePhone } from '../lib/format';
 import { Modal, btn, inputCls, toast } from './ui';
 
@@ -41,25 +43,44 @@ export function ImportModal({
   const [mode, setMode] = useState<'append' | 'replace'>(data.applications.length ? 'append' : 'replace');
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState('');
+  const [errDetail, setErrDetail] = useState('');
+  const [pasted, setPasted] = useState('');
 
   const sheet = sheets?.[sheetIdx];
+
+  const useSheets = (s: SheetData[]) => {
+    // 이름 열이 인식되는 시트를 우선 선택
+    const best = Math.max(0, s.findIndex((x) => guessMapping(x.headers).name >= 0));
+    setSheets(s);
+    setSheetIdx(best);
+    setMapping(guessMapping(s[best].headers));
+  };
 
   const onFile = async (file: File | undefined) => {
     if (!file) return;
     setErr('');
+    setErrDetail('');
     setLoading(true);
     try {
-      const s = await readWorkbook(file);
-      // 이름 열이 인식되는 시트를 우선 선택
-      const best = Math.max(0, s.findIndex((x) => guessMapping(x.headers).name >= 0));
-      setSheets(s);
-      setSheetIdx(best);
-      setMapping(guessMapping(s[best].headers));
+      useSheets(await readWorkbook(file));
     } catch (e) {
       setErr(e instanceof Error ? e.message : '엑셀을 읽지 못했습니다.');
+      setErrDetail(e instanceof ReadError ? e.detail : '');
     } finally {
       setLoading(false);
     }
+  };
+
+  const onPaste = () => {
+    setErr('');
+    setErrDetail('');
+    const sheet = gridToSheet('붙여넣은 표', parseDelimited(pasted));
+    if (!sheet || !sheet.rows.length) {
+      setErr('붙여넣은 내용에서 표를 찾지 못했습니다. 엑셀에서 열 이름(머리글) 행까지 함께 선택해서 복사해 주세요.');
+      return;
+    }
+    setPasted('');
+    useSheets([sheet]);
   };
 
   const preview = useMemo(() => {
@@ -79,11 +100,45 @@ export function ImportModal({
         <div className="space-y-4">
           <label className="flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-slate-300 p-8 text-center hover:border-blue-400 hover:bg-blue-50">
             <span className="text-3xl">📄</span>
-            <span className="mt-2 font-semibold">{loading ? '읽는 중…' : '엑셀 파일(.xlsx) 선택'}</span>
+            <span className="mt-2 font-semibold">{loading ? '읽는 중…' : '엑셀 파일 선택 (.xlsx · NEIS .xls · .csv)'}</span>
             <span className="mt-1 text-xs text-slate-500">파일은 이 브라우저 안에서만 읽히며 어디에도 업로드되지 않습니다.</span>
-            <input type="file" accept=".xlsx" className="hidden" onChange={(e) => onFile(e.target.files?.[0])} />
+            <input
+              type="file"
+              accept=".xlsx,.xls,.csv,.txt,.htm,.html"
+              className="hidden"
+              onChange={(e) => {
+                onFile(e.target.files?.[0]);
+                e.target.value = '';
+              }}
+            />
           </label>
-          {err && <p className="text-sm text-red-600">{err}</p>}
+          {err && (
+            <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+              {err}
+              {errDetail && <p className="mt-1 break-all text-[11px] text-red-400">기술 정보(학생 정보 없음): {errDetail}</p>}
+            </div>
+          )}
+
+          <div className="rounded-xl border border-slate-200 p-4">
+            <p className="font-semibold">📋 복사해서 붙여넣기</p>
+            <p className="mt-1 text-xs text-slate-500">
+              파일이 열리지 않으면(문서보안·암호 등) 엑셀에서 <b>열 이름 행부터 표 전체를 선택 → Ctrl+C</b> 한 뒤, 아래 칸을 누르고{' '}
+              <b>Ctrl+V</b> 하세요. 붙여넣은 내용도 이 브라우저 안에서만 처리됩니다.
+            </p>
+            <textarea
+              className="mt-2 h-28 w-full rounded-lg border border-slate-300 p-2 font-mono text-xs outline-none focus:border-blue-500"
+              placeholder={'이름\t생년월일\t대학명\t모집단위\t수험번호\n홍길동\t070315\t○○대학교\t경영학과\t10000001'}
+              value={pasted}
+              onChange={(e) => setPasted(e.target.value)}
+              spellCheck={false}
+            />
+            <div className="mt-2 flex items-center justify-between gap-2">
+              <span className="text-xs text-slate-400">{pasted ? `${pasted.split(/\r?\n/).filter(Boolean).length}줄 붙여넣음` : ''}</span>
+              <button className={btn.primary} disabled={!pasted.trim()} onClick={onPaste}>
+                붙여넣은 표 불러오기
+              </button>
+            </div>
+          </div>
           <div className="rounded-xl bg-slate-50 p-4 text-sm text-slate-600">
             <p className="font-semibold text-slate-700">지원하는 엑셀 형태</p>
             <ul className="mt-1 list-disc space-y-0.5 pl-5">

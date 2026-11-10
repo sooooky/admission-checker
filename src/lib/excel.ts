@@ -3,6 +3,17 @@ import type { Application, Student, VaultData } from './types';
 import { admLabel, hasMinReq, historyText, newId, parseAdm, parseMinReq, roundLongLabel } from './types';
 import { computeStats, pct } from './insights';
 import { downloadBlob } from './storage';
+import {
+  KIND_MESSAGE,
+  decodeText,
+  detectFileKind,
+  gridToSheet,
+  parseDelimited,
+  parseHtmlTables,
+  readXlsxLite,
+  type SheetData,
+} from './sheetSources';
+export type { SheetData } from './sheetSources';
 import { formatBirth, formatDateTime, formatPhone, normalizeBirth, normalizePhone, normalizeUniv } from './format';
 
 type ExcelJSModule = typeof ExcelJSType;
@@ -13,11 +24,6 @@ async function loadExcelJS(): Promise<ExcelJSModule> {
   return mod.default ?? mod;
 }
 
-export interface SheetData {
-  name: string;
-  headers: string[];
-  rows: string[][];
-}
 
 function cellToString(cell: ExcelJSType.Cell): string {
   return valueToString(cell.value, cell.numFmt);
@@ -58,28 +64,68 @@ async function stripDocProps(buf: ArrayBuffer): Promise<ArrayBuffer> {
   return zip.generateAsync({ type: 'arraybuffer' });
 }
 
-export async function readWorkbook(file: File): Promise<SheetData[]> {
-  if (!/\.xlsx$/i.test(file.name)) {
-    throw new Error('.xlsx 형식만 지원합니다. 엑셀에서 "다른 이름으로 저장 → Excel 통합 문서(*.xlsx)"로 저장해 주세요.');
+export class ReadError extends Error {
+  constructor(
+    message: string,
+    public detail = '',
+  ) {
+    super(message);
   }
-  const ExcelJS = await loadExcelJS();
+}
+
+/**
+ * 파일을 읽어 표 목록으로 돌려줍니다.
+ * xlsx → ExcelJS → (실패 시) 문서 속성 제거 후 ExcelJS → (실패 시) 예비 해석기.
+ * NEIS 웹 형식(.xls 안의 HTML 표)과 CSV 도 읽습니다. 모두 브라우저 안에서만 처리합니다.
+ */
+export async function readWorkbook(file: File): Promise<SheetData[]> {
   const buf = await file.arrayBuffer();
-  let wb = new ExcelJS.Workbook();
-  try {
-    await wb.xlsx.load(buf);
-  } catch (first) {
-    // NEIS·한셀 등 다른 프로그램이 만든 파일은 "문서 속성"(docProps) 형식 차이로 읽기에 실패하는 경우가 있습니다.
-    // 학생 데이터와 무관한 문서 속성만 빼고 다시 읽습니다. (브라우저 안에서만 처리)
+  const bytes = new Uint8Array(buf);
+  const kind = detectFileKind(bytes.slice(0, 8192));
+  const head = Array.from(bytes.slice(0, 8), (b) => b.toString(16).padStart(2, '0')).join(' ');
+
+  if (kind === 'html') {
+    const sheets = parseHtmlTables(decodeText(bytes));
+    if (sheets.length) return sheets;
+    throw new ReadError('파일 안에서 표를 찾지 못했습니다.', `html, ${file.name}`);
+  }
+  if (kind === 'text') {
+    const sheet = gridToSheet(file.name, parseDelimited(decodeText(bytes)));
+    if (sheet) return [sheet];
+    throw new ReadError('파일 안에서 표를 찾지 못했습니다.', `text, ${file.name}`);
+  }
+  if (kind !== 'zip') throw new ReadError(KIND_MESSAGE[kind], `형식: ${kind}, 시작 바이트: ${head}`);
+
+  const errors: string[] = [];
+  const ExcelJS = await loadExcelJS();
+  for (const attempt of ['그대로', '문서 속성 제거'] as const) {
     try {
-      wb = new ExcelJS.Workbook();
-      await wb.xlsx.load(await stripDocProps(buf));
-    } catch {
-      console.warn('엑셀 읽기 실패', first);
-      throw new Error(
-        '이 엑셀 파일을 읽지 못했습니다. 엑셀(또는 한셀)에서 파일을 연 뒤 "다른 이름으로 저장 → Excel 통합 문서(*.xlsx)"로 다시 저장해서 올려 주세요.',
-      );
+      const wb = new ExcelJS.Workbook();
+      await wb.xlsx.load(attempt === '그대로' ? buf : await stripDocProps(buf));
+      const sheets = sheetsFromExcelJS(wb);
+      if (sheets.length) return sheets;
+      errors.push(`${attempt}: 표 없음`);
+    } catch (e) {
+      errors.push(`${attempt}: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
+  try {
+    const sheets = await readXlsxLite(buf);
+    if (sheets.length) return sheets;
+    errors.push('예비 해석기: 표 없음');
+  } catch (e) {
+    errors.push(`예비 해석기: ${e instanceof Error ? e.message : String(e)}`);
+  }
+  console.warn('엑셀 읽기 실패', errors);
+  throw new ReadError(
+    errors.every((e) => e.endsWith('표 없음'))
+      ? '엑셀에서 표를 찾지 못했습니다. 1행(또는 위쪽 10행 안)에 "이름", "대학명" 같은 열 이름이 있는지 확인해 주세요.'
+      : '이 엑셀 파일의 구조를 해석하지 못했습니다. 아래 "복사해서 붙여넣기"를 이용해 주세요.',
+    errors.join(' / '),
+  );
+}
+
+function sheetsFromExcelJS(wb: ExcelJSType.Workbook): SheetData[] {
   const sheets: SheetData[] = [];
   wb.eachSheet((ws) => {
     const grid: string[][] = [];
@@ -90,20 +136,9 @@ export async function readWorkbook(file: File): Promise<SheetData[]> {
       });
       grid[rowNumber - 1] = Array.from(arr, (x) => x ?? '');
     });
-    const dense = Array.from(grid, (r) => r ?? []);
-    // 머리글 행: 위쪽 10줄 중 값이 2칸 이상 채워진 첫 행
-    const headerIdx = dense.slice(0, 10).findIndex((r) => r.filter((c) => c).length >= 2);
-    if (headerIdx < 0) return;
-    const width = Math.max(...dense.map((r) => r.length));
-    const pad = (r: string[]) => Array.from({ length: width }, (_, i) => r[i] ?? '');
-    const headers = pad(dense[headerIdx]).map((h, i) => h || `(열 ${i + 1})`);
-    const rows = dense
-      .slice(headerIdx + 1)
-      .map(pad)
-      .filter((r) => r.some((c) => c));
-    sheets.push({ name: ws.name, headers, rows });
+    const sheet = gridToSheet(ws.name, Array.from(grid, (r) => r ?? []));
+    if (sheet) sheets.push(sheet);
   });
-  if (!sheets.length) throw new Error('엑셀에서 표를 찾지 못했습니다.');
   return sheets;
 }
 
