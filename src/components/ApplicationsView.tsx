@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { Application, Status, Student, UniversityRegistry } from '../lib/types';
-import { STATUSES } from '../lib/types';
+import { MAX_ROUND, STATUSES, entryText, recordRound, roundLabel, roundLongLabel } from '../lib/types';
 import { birthAs, formatBirth, formatDateTime, maskName, maskPhone } from '../lib/format';
 import { encodePayload } from '../lib/autofill';
 import type { Settings } from '../lib/storage';
@@ -13,10 +13,17 @@ interface Props {
   universities: UniversityRegistry;
   settings: Settings;
   hideInfo: boolean;
-  onUpdateApp: (id: string, patch: Partial<Application>) => void;
+  onChangeApp: (id: string, fn: (a: Application) => Application) => void;
+  onRoundChange: (round: number) => void;
   onSetUnivUrl: (univ: string, url: string) => void;
   onEdit: (app: Application) => void;
   onAdd: () => void;
+}
+
+/** 이번 차수에 확인이 필요한 원서: 아직 결과가 확정되지 않았고 이번 차수 기록이 없는 것 */
+export function needsCheck(a: Application, round: number) {
+  if (a.history.some((h) => h.round === round)) return false;
+  return a.status === '미조회' || a.status === '예비' || a.status === '확인필요';
 }
 
 export function isSafeUrl(url: string) {
@@ -47,7 +54,7 @@ export function askUnivUrl(univ: string, current: string, onSet: (univ: string, 
 export function ApplicationsView(p: Props) {
   const [groupBy, setGroupBy] = useState<'univ' | 'student'>('univ');
   const [query, setQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<Status | '전체'>('전체');
+  const [statusFilter, setStatusFilter] = useState<Status | '전체' | '이번차수'>('전체');
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
 
   const studentById = useMemo(() => new Map(p.students.map((s) => [s.id, s])), [p.students]);
@@ -55,12 +62,14 @@ export function ApplicationsView(p: Props) {
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return p.applications.filter((a) => {
-      if (statusFilter !== '전체' && a.status !== statusFilter) return false;
+      if (statusFilter === '이번차수') {
+        if (!needsCheck(a, p.settings.currentRound)) return false;
+      } else if (statusFilter !== '전체' && a.status !== statusFilter) return false;
       if (!q) return true;
       const s = studentById.get(a.studentId);
       return [s?.name, a.university, a.major, a.track, a.examNo].some((x) => x?.toLowerCase().includes(q));
     });
-  }, [p.applications, query, statusFilter, studentById]);
+  }, [p.applications, query, statusFilter, studentById, p.settings.currentRound]);
 
   const groups = useMemo(() => {
     const map = new Map<string, Application[]>();
@@ -87,6 +96,10 @@ export function ApplicationsView(p: Props) {
     return c;
   }, [p.applications]);
 
+  const needCount = useMemo(
+    () => p.applications.filter((a) => needsCheck(a, p.settings.currentRound)).length,
+    [p.applications, p.settings.currentRound],
+  );
   const total = p.applications.length;
   const done = total - counts['미조회'];
 
@@ -121,6 +134,27 @@ export function ApplicationsView(p: Props) {
         </div>
         <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100">
           <div className="h-full bg-blue-500 transition-all" style={{ width: total ? `${(done / total) * 100}%` : 0 }} />
+        </div>
+        <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl bg-blue-50 px-3 py-2">
+          <span className="text-sm font-semibold text-blue-900">기록할 차수</span>
+          <select
+            className="rounded-lg border border-blue-200 bg-white px-2 py-1 text-sm font-semibold text-blue-800"
+            value={p.settings.currentRound}
+            onChange={(e) => p.onRoundChange(Number(e.target.value))}
+          >
+            {Array.from({ length: MAX_ROUND + 1 }, (_, r) => (
+              <option key={r} value={r}>
+                {roundLongLabel(r)}
+              </option>
+            ))}
+          </select>
+          <button
+            onClick={() => setStatusFilter(statusFilter === '이번차수' ? '전체' : '이번차수')}
+            className={`rounded-full px-3 py-1 text-xs font-semibold ${statusFilter === '이번차수' ? 'bg-blue-700 text-white' : 'bg-white text-blue-700'}`}
+          >
+            이번 차수 미확인 {needCount}
+          </button>
+          <span className="text-xs text-blue-800/70">결과 버튼은 선택한 차수의 결과로 기록됩니다.</span>
         </div>
         <div className="mt-3 flex flex-wrap gap-1.5">
           {(['전체', ...STATUSES] as const).map((s) => (
@@ -243,19 +277,22 @@ function AppRow({
   hasUrl,
   settings,
   hideInfo,
-  onUpdateApp,
+  onChangeApp,
   onEdit,
   onLookup,
 }: Props & { app: Application; student?: Student; showUniv: boolean; hasUrl: boolean; onLookup: () => void }) {
-  const setStatus = (status: Status) =>
-    onUpdateApp(a.id, { status, checkedAt: status === '미조회' ? null : new Date().toISOString() });
+  const round = settings.currentRound;
+  const thisEntry = a.history.find((h) => h.round === round);
+  const prevWait = [...a.history].reverse().find((h) => h.round < round && h.status === '예비');
+  const record = (st: Exclude<Status, '미조회'>) =>
+    onChangeApp(a.id, (x) => recordRound(x, round, thisEntry?.status === st ? null : st));
   const name = s?.name ?? '(학생 정보 없음)';
   const birth = s?.birth ?? '';
   const other = settings.birthDigits === 6 ? 8 : 6;
 
   return (
     <li className="flex flex-col gap-3 px-4 py-3 lg:flex-row lg:items-center">
-      <div className="min-w-0 lg:w-64">
+      <div className="min-w-0 lg:w-72">
         <div className="flex items-center gap-2">
           <span className="font-semibold">{showUniv ? a.university : hideInfo ? maskName(name) : name}</span>
           <span className={`rounded px-1.5 py-0.5 text-[11px] font-medium ${STATUS_STYLE[a.status].badge}`}>
@@ -268,6 +305,20 @@ function AppRow({
           {[a.track, a.major].filter(Boolean).join(' · ') || '전형/모집단위 미입력'}
           {a.checkedAt && <span className="text-slate-400"> · {formatDateTime(a.checkedAt)} 확인</span>}
         </p>
+        {a.history.length > 0 && (
+          <div className="mt-1 flex flex-wrap items-center gap-0.5 text-[11px]">
+            {a.history.map((h, i) => (
+              <span key={h.round} className="flex items-center gap-0.5">
+                {i > 0 && <span className="text-slate-300">→</span>}
+                <span
+                  className={`rounded px-1 py-px ${STATUS_STYLE[h.status].badge} ${h.round === round ? 'ring-1 ring-blue-400' : ''}`}
+                >
+                  <span className="opacity-60">{roundLabel(h.round)}</span> {entryText(h)}
+                </span>
+              </span>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* 조회 + 복사 */}
@@ -302,36 +353,29 @@ function AppRow({
         )}
       </div>
 
-      {/* 결과 기록 */}
+      {/* 이번 차수 결과 기록 */}
       <div className="flex flex-wrap items-center gap-1 lg:ml-auto">
+        <span className="mr-0.5 text-[11px] font-semibold text-blue-700">{roundLabel(round)}</span>
         {STATUSES.filter((x) => x !== '미조회').map((st) => (
           <button
             key={st}
-            onClick={() => setStatus(a.status === st ? '미조회' : st)}
-            className={`rounded-md px-2 py-1 text-xs font-medium ${a.status === st ? STATUS_STYLE[st].on : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+            onClick={() => record(st)}
+            className={`rounded-md px-2 py-1 text-xs font-medium ${thisEntry?.status === st ? STATUS_STYLE[st].on : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
           >
             {STATUS_STYLE[st].short}
           </button>
         ))}
-        {a.status === '예비' && (
+        {thisEntry?.status === '예비' && (
           <input
-            className="w-16 rounded-md border border-slate-300 px-2 py-1 text-xs"
-            placeholder="번호"
+            className="w-20 rounded-md border border-amber-300 px-2 py-1 text-xs"
+            placeholder={prevWait?.waitNo ? `이전 ${prevWait.waitNo}` : '예비번호'}
             inputMode="numeric"
-            value={a.waitNo}
-            onChange={(e) => onUpdateApp(a.id, { waitNo: e.target.value })}
+            autoFocus={!thisEntry.waitNo}
+            value={thisEntry.waitNo}
+            onChange={(e) => onChangeApp(a.id, (x) => recordRound(x, round, '예비', e.target.value.replace(/[^\d]/g, '')))}
           />
         )}
-        {a.status === '충원합격' && (
-          <input
-            className="w-16 rounded-md border border-slate-300 px-2 py-1 text-xs"
-            placeholder="차수"
-            inputMode="numeric"
-            value={a.round}
-            onChange={(e) => onUpdateApp(a.id, { round: e.target.value })}
-          />
-        )}
-        <button className="rounded-md px-2 py-1 text-xs text-slate-400 hover:bg-slate-100" onClick={() => onEdit(a)} title="수정·메모">
+        <button className="rounded-md px-2 py-1 text-xs text-slate-400 hover:bg-slate-100" onClick={() => onEdit(a)} title="수정·기록 정정·메모">
           ✎{a.note && <span className="ml-0.5 text-blue-500">•</span>}
         </button>
       </div>

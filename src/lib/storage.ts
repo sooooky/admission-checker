@@ -9,8 +9,10 @@ const SETTINGS_KEY = 'admchk_settings_v1';
 export interface Settings {
   autoLockMinutes: number;
   birthDigits: 6 | 8;
+  /** 지금 기록 중인 발표 차수 (0 = 최초 발표) */
+  currentRound: number;
 }
-export const defaultSettings: Settings = { autoLockMinutes: 15, birthDigits: 6 };
+export const defaultSettings: Settings = { autoLockMinutes: 15, birthDigits: 6, currentRound: 0 };
 
 function readJSON<T>(key: string): T | null {
   try {

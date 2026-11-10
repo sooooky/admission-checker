@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Application, Student, UniversityRegistry, VaultData } from './lib/types';
-import { emptyVault } from './lib/types';
+import { emptyVault, migrateVault } from './lib/types';
+import { WaitlistView } from './components/WaitlistView';
 import { createKey, decryptJSON, encryptJSON, type KeyHandle } from './lib/crypto';
 import {
   downloadText,
@@ -24,7 +25,7 @@ import { SettingsModal, type BackupPayload } from './components/SettingsModal';
 import { Toaster, btn, toast } from './components/ui';
 
 type Phase = 'setup' | 'locked' | 'unlocked';
-type Tab = 'list' | 'univ' | 'guide';
+type Tab = 'list' | 'wait' | 'univ' | 'guide';
 
 export default function App() {
   const [phase, setPhase] = useState<Phase>(() => (loadVaultBlob() ? 'locked' : 'setup'));
@@ -75,7 +76,7 @@ export default function App() {
     try {
       const { data: d, handle } = await decryptJSON<VaultData>(blob, password);
       keyRef.current = handle;
-      setData(d);
+      setData(migrateVault(d));
       setPhase('unlocked');
       return null;
     } catch {
@@ -136,8 +137,8 @@ export default function App() {
   }, [phase, lock]);
 
   // ── 데이터 조작 ──
-  const updateApp = (id: string, patch: Partial<Application>) =>
-    commit((d) => ({ ...d, applications: d.applications.map((a) => (a.id === id ? { ...a, ...patch } : a)) }));
+  const changeApp = (id: string, fn: (a: Application) => Application) =>
+    commit((d) => ({ ...d, applications: d.applications.map((a) => (a.id === id ? fn(a) : a)) }));
 
   const saveEdited = (app: Application, student: Student) =>
     commit((d) => {
@@ -195,6 +196,7 @@ export default function App() {
 
   const tabs: [Tab, string][] = [
     ['list', '조회 목록'],
+    ['wait', '예비 현황'],
     ['univ', '대학별 조회 주소'],
     ['guide', '사용법 · 자동입력'],
   ];
@@ -221,7 +223,7 @@ export default function App() {
             🔒 잠금
           </button>
         </div>
-        <nav className="mx-auto flex max-w-6xl gap-1 px-4">
+        <nav className="mx-auto flex max-w-6xl gap-1 overflow-x-auto whitespace-nowrap px-4">
           {tabs.map(([k, label]) => (
             <button
               key={k}
@@ -257,12 +259,22 @@ export default function App() {
               universities={universities}
               settings={settings}
               hideInfo={hideInfo}
-              onUpdateApp={updateApp}
+              onChangeApp={changeApp}
+              onRoundChange={(r) => setSettings((s) => ({ ...s, currentRound: r }))}
               onSetUnivUrl={setUnivUrl}
               onEdit={(a) => setModal({ edit: a })}
               onAdd={() => setModal({ edit: null })}
             />
           ))}
+        {tab === 'wait' && (
+          <WaitlistView
+            students={data.students}
+            applications={data.applications}
+            currentRound={settings.currentRound}
+            hideInfo={hideInfo}
+            onEdit={(a) => setModal({ edit: a })}
+          />
+        )}
         {tab === 'univ' && (
           <UniversitiesView applications={data.applications} universities={universities} onChange={setUniversities} />
         )}
@@ -279,7 +291,7 @@ export default function App() {
           onChangePassword={changePassword}
           onExportBackup={exportBackup}
           onRestoreBackup={(b) => {
-            commit(() => b.vault);
+            commit(() => migrateVault(b.vault));
             setUniversities((u) => ({ ...u, ...(b.universities ?? {}) }));
           }}
           onWipeAll={() => {
