@@ -96,7 +96,7 @@ export function ImportModal({
               <li>열 이름이 달라도 다음 화면에서 직접 지정할 수 있습니다. 핸드폰 열은 없어도 됩니다.</li>
             </ul>
             <button className={`${btn.secondary} mt-3`} onClick={() => downloadTemplate()}>
-              ⬇️ 업로드 양식 받기
+              ⬇️ 샘플 엑셀(양식) 받기
             </button>
           </div>
         </div>

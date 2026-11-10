@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { BOOKMARKLET_HREF, encodePayload } from '../lib/autofill';
+import { downloadTemplate } from '../lib/excel';
 import { btn, copyText, toast } from './ui';
 
 export function GuideView() {
@@ -29,10 +30,16 @@ export function GuideView() {
       </section>
 
       <section className="rounded-2xl bg-white p-5 shadow-sm">
-        <h2 className="text-base font-bold">📋 사용 순서</h2>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-base font-bold">📋 사용 순서</h2>
+          <button className={btn.secondary} onClick={() => downloadTemplate()}>
+            ⬇️ 샘플 엑셀(양식) 받기
+          </button>
+        </div>
         <ol className="mt-2 list-decimal space-y-1 pl-5 text-slate-600">
           <li>
-            <b>엑셀 불러오기</b>: 오른쪽 위 [엑셀 불러오기]에서 학생·원서 목록을 불러옵니다.
+            <b>엑셀 불러오기</b>: 오른쪽 위 [엑셀 불러오기]에서 학생·원서 목록을 불러옵니다. 양식이 없으면 위의 [샘플 엑셀]을 받아
+            예시를 지우고 입력하세요. 열 순서는 상관없고, 열 이름(머리글)으로 자동 인식합니다.
           </li>
           <li>
             <b>조회 주소 등록</b>: [대학별 조회 주소] 탭에서 각 대학의 합격자 조회 페이지 주소를 붙여넣습니다.

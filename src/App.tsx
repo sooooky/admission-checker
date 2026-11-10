@@ -23,6 +23,7 @@ import { ImportModal } from './components/ImportModal';
 import { EditModal } from './components/EditModal';
 import { SettingsModal, type BackupPayload } from './components/SettingsModal';
 import { Toaster, btn, toast } from './components/ui';
+import { downloadTemplate } from './lib/excel';
 
 type Phase = 'setup' | 'locked' | 'unlocked';
 type Tab = 'list' | 'wait' | 'univ' | 'guide';
@@ -251,6 +252,9 @@ export default function App() {
                   직접 추가
                 </button>
               </div>
+              <button className="mt-4 text-sm text-blue-700 underline" onClick={() => downloadTemplate()}>
+                ⬇️ 샘플 엑셀(양식) 받기 — 예시가 채워진 파일
+              </button>
             </div>
           ) : (
             <ApplicationsView

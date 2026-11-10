@@ -324,26 +324,88 @@ export async function exportResults(data: VaultData, opts: { includePhone: boole
   await saveWorkbook(wb, `입시결과_${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}.xlsx`);
 }
 
+// 샘플 파일의 예시 데이터 (모두 가상의 학생·대학입니다)
+const SAMPLE_STUDENTS: { name: string; birth: string; phone: string; apps: [string, string, string, string][] }[] = [
+  {
+    name: '김예시',
+    birth: '070315',
+    phone: '010-0000-0001',
+    apps: [
+      ['가나대학교', '학생부종합', '경영학과', '10000001'],
+      ['다라대학교', '학생부교과', '경영학부', 'A2000002'],
+      ['마바대학교', '논술', '경제학과', '00301234'],
+    ],
+  },
+  {
+    name: '이연습',
+    birth: '071102',
+    phone: '010-0000-0002',
+    apps: [
+      ['사아전문대학', '일반고 특별전형', '간호학과', '27001001'],
+      ['자차전문대학', '일반전형', '물리치료과', '27002002'],
+      ['카타대학교', '학생부교과', '보건행정학과', 'B3000003'],
+      ['파하전문대학', '면접전형', '치위생과', '27003003'],
+    ],
+  },
+  {
+    name: '박샘플',
+    birth: '060820',
+    phone: '',
+    apps: [
+      ['가나대학교', '실기위주', '시각디자인과', '10000077'],
+      ['다라대학교', '학생부종합', '산업디자인학과', 'A2000099'],
+    ],
+  },
+];
+
 export async function downloadTemplate() {
   const ExcelJS = await loadExcelJS();
   const wb = new ExcelJS.Workbook();
+  const text = { numFmt: '@' }; // 텍스트 서식: 수험번호·생년월일의 앞자리 0 보존
 
+  // ── 작성 안내 ──
+  const g = wb.addWorksheet('작성 안내');
+  g.columns = [
+    { header: '항목', key: 'k', width: 14 },
+    { header: '설명', key: 'v', width: 90 },
+  ];
+  const guide: [string, string][] = [
+    ['사용 방법', '양식A 또는 양식B 중 편한 시트 하나에 학생 정보를 입력한 뒤, 앱의 [엑셀 불러오기]에서 이 파일을 선택하세요.'],
+    ['예시 행', '각 시트의 예시(김예시·이연습·박샘플)는 가상의 학생·대학입니다. 지우고 실제 학생 정보를 입력하세요.'],
+    ['양식A', '원서 1건 = 1줄. 원서가 많은 학생(전문대 포함 10~20개)도 줄만 추가하면 되어 가장 편합니다.'],
+    ['양식B', '학생 1명 = 1줄. 대학1·전형1·모집단위1·수험번호1 … 처럼 번호를 붙여 옆으로 나열합니다. 대학7, 대학8 … 처럼 열을 더 붙여도 됩니다.'],
+    ['필수 열', '이름, 대학(대학명). 나머지(생년월일·핸드폰·전형·모집단위·수험번호)는 비어 있어도 됩니다.'],
+    ['열 순서', '열 순서는 상관없습니다. 앱이 열 이름(머리글)을 보고 자동으로 맞추며, 불러오기 화면에서 직접 바꿀 수도 있습니다.'],
+    ['생년월일', '070315, 20070315, 2007-03-15, 2007.3.15 모두 가능합니다.'],
+    ['핸드폰', '학생 본인 번호. 대학 조회에 휴대폰 번호가 필요한 경우에만 쓰입니다. 010-1234-5678 또는 01012345678.'],
+    ['수험번호', '앞자리 0이 사라지지 않도록 이 파일의 칸은 "텍스트" 서식으로 되어 있습니다. 그대로 입력하세요.'],
+    ['보호자 연락처', '"보호자", "학부모"가 들어간 열은 학생 핸드폰으로 인식하지 않습니다.'],
+    ['개인정보', '파일은 앱이 브라우저 안에서만 읽으며 업로드되지 않습니다. 불러온 뒤에는 공용 PC에 파일을 남겨두지 마세요.'],
+  ];
+  guide.forEach(([k, v]) => g.addRow({ k, v }));
+  g.getColumn('v').alignment = { wrapText: true, vertical: 'top' };
+  g.getColumn('k').font = { bold: true };
+  styleHeader(g);
+
+  // ── 양식A: 원서별 한 줄 ──
   const a = wb.addWorksheet('양식A_원서별 한줄');
   a.columns = ['이름', '생년월일', '핸드폰', '대학명', '전형명', '모집단위', '수험번호'].map((h) => ({
     header: h,
-    width: h === '대학명' || h === '모집단위' ? 18 : 14,
-    style: { numFmt: '@' },
+    width: h === '대학명' || h === '모집단위' || h === '전형명' ? 18 : 14,
+    style: text,
   }));
-  a.addRow(['홍길동', '070315', '010-0000-0000', '○○대학교', '학생부종합', '경영학과', '10000001']);
-  a.addRow(['홍길동', '070315', '010-0000-0000', '△△대학교', '학생부교과', '컴퓨터공학과', 'A2000002']);
+  for (const s of SAMPLE_STUDENTS) for (const [u, t, m, e] of s.apps) a.addRow([s.name, s.birth, s.phone, u, t, m, e]);
   styleHeader(a);
 
+  // ── 양식B: 학생별 한 줄 ──
   const b = wb.addWorksheet('양식B_학생별 한줄');
+  const groups = Math.max(6, ...SAMPLE_STUDENTS.map((s) => s.apps.length));
   const headers = ['이름', '생년월일', '핸드폰'];
-  for (let i = 1; i <= 6; i++) headers.push(`대학${i}`, `전형${i}`, `모집단위${i}`, `수험번호${i}`);
-  b.columns = headers.map((h) => ({ header: h, width: 13, style: { numFmt: '@' } }));
-  b.addRow(['홍길동', '070315', '010-0000-0000', '○○대학교', '학생부종합', '경영학과', '10000001', '△△대학교', '학생부교과', '컴퓨터공학과', 'A2000002']);
+  for (let i = 1; i <= groups; i++) headers.push(`대학${i}`, `전형${i}`, `모집단위${i}`, `수험번호${i}`);
+  b.columns = headers.map((h) => ({ header: h, width: /^대학|^모집|^전형/.test(h) ? 15 : 12, style: text }));
+  for (const s of SAMPLE_STUDENTS) b.addRow([s.name, s.birth, s.phone, ...s.apps.flat()]);
   styleHeader(b);
+  b.views = [{ state: 'frozen', xSplit: 1, ySplit: 1 }];
 
-  await saveWorkbook(wb, '입시결과_업로드양식.xlsx');
+  await saveWorkbook(wb, '입시조회_샘플양식.xlsx');
 }
