@@ -1,6 +1,6 @@
 import type * as ExcelJSType from 'exceljs';
 import type { Application, Student, VaultData } from './types';
-import { admLabel, hasMinReq, historyText, newId, parseAdm, parseMinReq, roundLongLabel } from './types';
+import { admLabel, entryDate, entryText, hasMinReq, historyText, newId, parseAdm, parseMinReq } from './types';
 import { computeStats, pct } from './insights';
 import { downloadBlob } from './storage';
 import {
@@ -279,7 +279,7 @@ export function buildImport(
       addedApplications++;
     }
   }
-  return { data: { version: 1, students, applications }, addedStudents, addedApplications, skippedRows };
+  return { data: { version: 2, students, applications }, addedStudents, addedApplications, skippedRows };
 }
 
 // ───────────────────────── 내보내기 ─────────────────────────
@@ -315,9 +315,8 @@ export async function exportResults(data: VaultData, opts: { includePhone: boole
     { header: '수능최저', key: 'minReq', width: 10 },
     { header: '결과', key: 'status', width: 10 },
     { header: '예비번호', key: 'waitNo', width: 9 },
-    { header: '충원차수', key: 'round', width: 9 },
     { header: '등록', key: 'enrolled', width: 6 },
-    { header: '경과', key: 'history', width: 40 },
+    { header: '기록 경과', key: 'history', width: 50 },
     { header: '원서 메모', key: 'note', width: 24 },
     { header: '확인일시', key: 'checkedAt', width: 12 },
   ];
@@ -339,7 +338,6 @@ export async function exportResults(data: VaultData, opts: { includePhone: boole
       minReq: hasMinReq(a.minReq) ? a.minReq : '',
       status: a.status,
       waitNo: a.waitNo,
-      round: a.round,
       enrolled: enrolledIds.has(a.id) ? '★' : '',
       history: historyText(a),
       note: a.note,
@@ -417,25 +415,28 @@ export async function exportResults(data: VaultData, opts: { includePhone: boole
   // 예비번호 변화: 예비를 한 번이라도 받은 원서 × 차수
   const waits = sorted.filter((a) => a.history.some((h) => h.status === '예비'));
   if (waits.length) {
-    const maxRound = Math.max(0, ...waits.flatMap((a) => a.history.map((h) => h.round)));
+    const maxLen = Math.max(...waits.map((a) => a.history.length));
     const wsw = wb.addWorksheet('예비번호 변화');
     wsw.columns = [
       { header: '이름', key: 'name', width: 10 },
       { header: '대학', key: 'univ', width: 18 },
       { header: '모집단위', key: 'major', width: 18 },
-      ...Array.from({ length: maxRound + 1 }, (_, r) => ({ header: roundLongLabel(r), key: `r${r}`, width: 11 })),
+      { header: '처음 예비', key: 'first', width: 10 },
+      { header: '최근 예비', key: 'last', width: 10 },
       { header: '현재', key: 'status', width: 10 },
+      ...Array.from({ length: maxLen }, (_, i) => ({ header: `기록 ${i + 1}`, key: `h${i}`, width: 14 })),
     ];
     for (const a of waits) {
+      const w = a.history.filter((h) => h.status === '예비' && h.waitNo);
       const row: Record<string, string | number> = {
         name: byId.get(a.studentId)?.name ?? '',
         univ: a.university,
         major: a.major,
+        first: w[0] ? Number(w[0].waitNo) : '',
+        last: w.length > 1 ? Number(w[w.length - 1].waitNo) : '',
         status: a.status,
       };
-      for (const h of a.history) {
-        row[`r${h.round}`] = h.status === '예비' ? (h.waitNo ? Number(h.waitNo) : '예비') : h.status;
-      }
+      a.history.forEach((h, i) => (row[`h${i}`] = `${entryDate(h)} ${entryText(h)}`));
       wsw.addRow(row);
     }
     styleHeader(wsw);

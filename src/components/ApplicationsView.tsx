@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { Application, ScheduleEvent, Status, Student, UniversityRegistry } from '../lib/types';
-import { MAX_ROUND, STATUSES, admLabel, admTypeOf, entryText, hasMinReq, nextMinReq, recordRound, roundLabel, roundLongLabel, type MinReq } from '../lib/types';
+import { STATUSES, admLabel, admTypeOf, checkedToday, entryDate, entryText, hasMinReq, nextMinReq, recordResult, undoLast, type MinReq } from '../lib/types';
 import { birthAs, formatBirth, formatDateTime, maskName, maskPhone } from '../lib/format';
 import { encodePayload } from '../lib/autofill';
 import type { Settings } from '../lib/storage';
@@ -17,7 +17,6 @@ interface Props {
   settings: Settings;
   hideInfo: boolean;
   onChangeApp: (id: string, fn: (a: Application) => Application) => void;
-  onRoundChange: (round: number) => void;
   schedule: ScheduleEvent[];
   onSetUnivUrl: (univ: string, url: string) => void;
   onEdit: (app: Application) => void;
@@ -26,9 +25,9 @@ interface Props {
   onSetEnrolled: (studentId: string, appId: string | null) => void;
 }
 
-/** 이번 차수에 확인이 필요한 원서: 아직 결과가 확정되지 않았고 이번 차수 기록이 없는 것 */
-export function needsCheck(a: Application, round: number) {
-  if (a.history.some((h) => h.round === round)) return false;
+/** 오늘 확인이 필요한 원서: 결과가 아직 확정되지 않았고(미조회·예비·확인필요) 오늘 기록이 없는 것 */
+export function needsCheck(a: Application) {
+  if (checkedToday(a)) return false;
   return a.status === '미조회' || a.status === '예비' || a.status === '확인필요';
 }
 
@@ -102,7 +101,7 @@ export function ApplicationsView(p: Props) {
       if (admFilter === '수시' && admTypeOf(a) !== '수시') return false;
       if (admFilter === '정시·추가' && admTypeOf(a) === '수시') return false;
       if (statusFilter === '이번차수') {
-        if (!needsCheck(a, p.settings.currentRound)) return false;
+        if (!needsCheck(a)) return false;
       } else if (statusFilter === '최저확인필요') {
         if (a.minReq !== '확인필요') return false;
       } else if (statusFilter === '최저미충족') {
@@ -112,7 +111,7 @@ export function ApplicationsView(p: Props) {
       const s = studentById.get(a.studentId);
       return [s?.name, s?.memo, a.university, a.major, a.examNo, a.note].some((x) => x?.toLowerCase().includes(q));
     });
-  }, [p.applications, query, statusFilter, studentById, p.settings.currentRound, admFilter]);
+  }, [p.applications, query, statusFilter, studentById, admFilter]);
 
   const groups = useMemo(() => {
     const map = new Map<string, Application[]>();
@@ -155,8 +154,8 @@ export function ApplicationsView(p: Props) {
   }, [p.applications]);
 
   const needCount = useMemo(
-    () => p.applications.filter((a) => needsCheck(a, p.settings.currentRound)).length,
-    [p.applications, p.settings.currentRound],
+    () => p.applications.filter((a) => needsCheck(a)).length,
+    [p.applications],
   );
   const total = p.applications.length;
   const done = total - counts['미조회'];
@@ -177,25 +176,16 @@ export function ApplicationsView(p: Props) {
           <div className="h-full bg-blue-500 transition-all" style={{ width: total ? `${(done / total) * 100}%` : 0 }} />
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl bg-blue-50 px-3 py-2">
-          <span className="text-sm font-semibold text-blue-900">기록할 차수</span>
-          <select
-            className="rounded-lg border border-blue-200 bg-white px-2 py-1 text-sm font-semibold text-blue-800"
-            value={p.settings.currentRound}
-            onChange={(e) => p.onRoundChange(Number(e.target.value))}
-          >
-            {Array.from({ length: MAX_ROUND + 1 }, (_, r) => (
-              <option key={r} value={r}>
-                {roundLongLabel(r)}
-              </option>
-            ))}
-          </select>
           <button
             onClick={() => setStatusFilter(statusFilter === '이번차수' ? '전체' : '이번차수')}
             className={`rounded-full px-3 py-1 text-xs font-semibold ${statusFilter === '이번차수' ? 'bg-blue-700 text-white' : 'bg-white text-blue-700'}`}
+            title="결과가 아직 확정되지 않았고(미조회·예비·확인필요) 오늘 기록하지 않은 원서"
           >
-            이번 차수 미확인 {needCount}
+            오늘 미확인 {needCount}
           </button>
-          <span className="text-xs text-blue-800/70">결과 버튼은 선택한 차수의 결과로 기록됩니다.</span>
+          <span className="text-xs text-blue-800/70">
+            예비번호가 바뀌면 새 번호를 적고 Enter — 이전 번호는 지워지지 않고 날짜와 함께 쌓입니다.
+          </span>
         </div>
         <div className="mt-3 flex flex-wrap gap-1.5">
           {(['전체', ...STATUSES] as const).map((s) => (
@@ -360,11 +350,17 @@ function AppRow({
   firstExamNo: string;
   clusterSize: number;
 }) {
-  const round = settings.currentRound;
-  const thisEntry = a.history.find((h) => h.round === round);
-  const prevWait = [...a.history].reverse().find((h) => h.round < round && h.status === '예비');
-  const record = (st: Exclude<Status, '미조회'>) =>
-    onChangeApp(a.id, (x) => recordRound(x, round, thisEntry?.status === st ? null : st));
+  const record = (st: Exclude<Status, '미조회'>) => {
+    if (a.status === st) {
+      // 같은 버튼을 다시 누르면: 방금 남긴 기록이면 취소, 오래된 기록이면 안내
+      const undone = undoLast(a);
+      if (undone) onChangeApp(a.id, () => undone);
+      else toast(`이미 "${st}"(으)로 기록되어 있습니다. 기록 수정·삭제는 ✎에서 할 수 있습니다.`);
+      return;
+    }
+    onChangeApp(a.id, (x) => recordResult(x, st, st === '예비' ? '' : ''));
+  };
+  const prevWait = [...a.history].reverse().find((h) => h.status === '예비' && h.waitNo);
   const name = s?.name ?? '(학생 정보 없음)';
   const birth = s?.birth ?? '';
   const other = settings.birthDigits === 6 ? 8 : 6;
@@ -416,20 +412,7 @@ function AppRow({
           {!continued && clusterSize > 1 && <span className="font-medium text-blue-600"> · 이 대학 원서 {clusterSize}개</span>}
           {a.checkedAt && <span className="text-slate-400">{continued ? '' : ' · '}{formatDateTime(a.checkedAt)} 확인</span>}
         </p>
-        {a.history.length > 0 && (
-          <div className="mt-1 flex flex-wrap items-center gap-0.5 text-[11px]">
-            {a.history.map((h, i) => (
-              <span key={h.round} className="flex items-center gap-0.5">
-                {i > 0 && <span className="text-slate-300">→</span>}
-                <span
-                  className={`rounded px-1 py-px ${STATUS_STYLE[h.status].badge} ${h.round === round ? 'ring-1 ring-blue-400' : ''}`}
-                >
-                  <span className="opacity-60">{roundLabel(h.round)}</span> {entryText(h)}
-                </span>
-              </span>
-            ))}
-          </div>
-        )}
+        {a.history.length > 0 && <HistoryChips history={a.history} />}
       </div>
 
       {/* 조회 + 복사 (같은 대학 둘째 원서부터는 첫 줄에서 한 번만 조회) */}
@@ -482,26 +465,23 @@ function AppRow({
       </div>
       )}
 
-      {/* 이번 차수 결과 기록 */}
+      {/* 결과 기록 (누를 때마다 날짜와 함께 쌓임) */}
       <div className="flex flex-wrap items-center gap-1 lg:ml-auto">
-        <span className="mr-0.5 text-[11px] font-semibold text-blue-700">{roundLabel(round)}</span>
         {STATUSES.filter((x) => x !== '미조회').map((st) => (
           <button
             key={st}
             onClick={() => record(st)}
-            className={`rounded-md px-2 py-1 text-xs font-medium ${thisEntry?.status === st ? STATUS_STYLE[st].on : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+            className={`rounded-md px-2 py-1 text-xs font-medium ${a.status === st ? STATUS_STYLE[st].on : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
           >
             {STATUS_STYLE[st].short}
           </button>
         ))}
-        {thisEntry?.status === '예비' && (
-          <input
-            className="w-20 rounded-md border border-amber-300 px-2 py-1 text-xs"
-            placeholder={prevWait?.waitNo ? `이전 ${prevWait.waitNo}` : '예비번호'}
-            inputMode="numeric"
-            autoFocus={!thisEntry.waitNo}
-            value={thisEntry.waitNo}
-            onChange={(e) => onChangeApp(a.id, (x) => recordRound(x, round, '예비', e.target.value.replace(/[^\d]/g, '')))}
+        {a.status === '예비' && (
+          <WaitInput
+            key={`${a.history.length}-${a.waitNo}`}
+            current={a.waitNo}
+            prev={prevWait?.waitNo ?? ''}
+            onCommit={(v) => onChangeApp(a.id, (x) => recordResult(x, '예비', v))}
           />
         )}
         {isPass(a) && s && (
@@ -614,5 +594,60 @@ export function StudentBadges({ insight }: { insight?: StudentInsight }) {
         </span>
       ))}
     </span>
+  );
+}
+
+/** 예비번호 입력칸: Enter 또는 칸을 벗어나면 기록 (값이 바뀐 경우만) */
+function WaitInput({ current, prev, onCommit }: { current: string; prev: string; onCommit: (v: string) => void }) {
+  const [v, setV] = useState(current);
+  const commit = () => {
+    const n = v.replace(/[^\d]/g, '');
+    if (n !== current) onCommit(n);
+  };
+  return (
+    <input
+      className="w-24 rounded-md border border-amber-300 px-2 py-1 text-xs"
+      placeholder={prev ? `이전 ${prev}번` : '예비번호'}
+      inputMode="numeric"
+      autoFocus={!current}
+      value={v}
+      title="새 번호를 적고 Enter — 이전 번호는 기록에 남습니다"
+      onChange={(e) => setV(e.target.value.replace(/[^\d]/g, ''))}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+        if (e.key === 'Escape') setV(current);
+      }}
+    />
+  );
+}
+
+/** 기록 경과: 날짜 + 결과, 예비번호가 줄면 ▼ 표시 (길면 앞부분 생략) */
+export function HistoryChips({ history, max = 6 }: { history: Application['history']; max?: number }) {
+  const shown = history.length > max ? history.slice(-max) : history;
+  let prevNo: number | null = null;
+  // 생략된 부분의 마지막 예비번호부터 비교
+  for (const h of history.slice(0, history.length - shown.length)) if (h.status === '예비' && h.waitNo) prevNo = Number(h.waitNo);
+  return (
+    <div className="mt-1 flex flex-wrap items-center gap-0.5 text-[11px]">
+      {history.length > shown.length && <span className="text-slate-400">이전 {history.length - shown.length}건 …</span>}
+      {shown.map((h, i) => {
+        let diff = 0;
+        if (h.status === '예비' && h.waitNo) {
+          const n = Number(h.waitNo);
+          if (prevNo !== null && n < prevNo) diff = prevNo - n;
+          prevNo = n;
+        }
+        return (
+          <span key={i} className="flex items-center gap-0.5">
+            {(i > 0 || history.length > shown.length) && <span className="text-slate-300">→</span>}
+            <span className={`rounded px-1 py-px ${STATUS_STYLE[h.status].badge}`} title={new Date(h.at).toLocaleString('ko-KR')}>
+              <span className="opacity-60">{entryDate(h)}</span> {entryText(h)}
+              {diff > 0 && <span className="ml-0.5 text-green-700">▼{diff}</span>}
+            </span>
+          </span>
+        );
+      })}
+    </div>
   );
 }

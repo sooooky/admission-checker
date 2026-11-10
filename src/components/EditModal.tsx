@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { Application, Student } from '../lib/types';
-import { ADM_TYPES, GUNS, MAX_ROUND, STATUSES, newId, roundLongLabel, withHistory, type ResultEntry } from '../lib/types';
+import { ADM_TYPES, GUNS, STATUSES, newId, withHistory, type ResultEntry } from '../lib/types';
 import { formatBirth, formatPhone, normalizeBirth, normalizePhone, normalizeUniv } from '../lib/format';
 import { Modal, btn, inputCls } from './ui';
 
@@ -44,8 +44,19 @@ export function EditModal({
   const [history, setHistory] = useState<ResultEntry[]>(app?.history ?? []);
   const setEntry = (i: number, patch: Partial<ResultEntry>) =>
     setHistory((h) => h.map((x, j) => (j === i ? { ...x, ...patch } : x)));
-  const usedRounds = new Set(history.map((h) => h.round));
-  const dupRound = history.length !== usedRounds.size;
+  // 기록 시각 ↔ 날짜 입력칸 (시각의 시:분은 유지)
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const toYmd = (iso: string) => {
+    const d = new Date(iso);
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  };
+  const withYmd = (iso: string, ymd: string) => {
+    const d = new Date(iso);
+    const [y, m, day] = ymd.split('-').map(Number);
+    if (!y || !m || !day) return iso;
+    d.setFullYear(y, m - 1, day);
+    return d.toISOString();
+  };
 
   const pickStudent = (id: string) => {
     setStudentId(id);
@@ -74,7 +85,10 @@ export function EditModal({
     onSave(
       withHistory(
         { ...a, university: normalizeUniv(a.university), studentId: student.id, examNo: a.examNo.replace(/\s/g, '') },
-        history.map((h) => ({ ...h, waitNo: h.status === '예비' ? h.waitNo : '' })),
+        history
+          .map((h, i) => ({ h: { ...h, waitNo: h.status === '예비' ? h.waitNo : '' }, i }))
+          .sort((x, y) => toYmd(x.h.at).localeCompare(toYmd(y.h.at)) || x.i - y.i)
+          .map((x) => x.h),
       ),
       student,
     );
@@ -161,21 +175,16 @@ export function EditModal({
         </div>
 
         <fieldset className="space-y-2 rounded-xl bg-slate-50 p-3">
-          <legend className="px-1 text-xs font-semibold text-slate-600">차수별 결과 기록</legend>
+          <legend className="px-1 text-xs font-semibold text-slate-600">결과 기록 (시간순 · 저장하면 날짜순으로 정렬)</legend>
           {history.length === 0 && <p className="text-xs text-slate-500">아직 기록이 없습니다.</p>}
           {history.map((h, i) => (
             <div key={i} className="grid grid-cols-[1fr_1fr_5rem_auto] items-center gap-2">
-              <select
+              <input
+                type="date"
                 className={`${inputCls} py-1.5`}
-                value={h.round}
-                onChange={(e) => setEntry(i, { round: Number(e.target.value) })}
-              >
-                {Array.from({ length: MAX_ROUND + 1 }, (_, r) => (
-                  <option key={r} value={r}>
-                    {roundLongLabel(r)}
-                  </option>
-                ))}
-              </select>
+                value={toYmd(h.at)}
+                onChange={(e) => setEntry(i, { at: withYmd(h.at, e.target.value) })}
+              />
               <select
                 className={`${inputCls} py-1.5`}
                 value={h.status}
@@ -197,15 +206,11 @@ export function EditModal({
               </button>
             </div>
           ))}
-          {dupRound && <p className="text-xs text-red-600">같은 차수가 두 번 들어 있습니다. 하나를 고치거나 지워 주세요.</p>}
           <button
             className={btn.ghost}
-            onClick={() => {
-              const next = history.length ? Math.max(...history.map((h) => h.round)) + 1 : 0;
-              setHistory([...history, { round: Math.min(next, MAX_ROUND), status: '예비', waitNo: '', at: new Date().toISOString() }]);
-            }}
+            onClick={() => setHistory([...history, { status: '예비', waitNo: '', at: new Date().toISOString() }])}
           >
-            + 차수 기록 추가
+            + 기록 추가
           </button>
         </fieldset>
         {field(
@@ -233,7 +238,7 @@ export function EditModal({
             <button className={btn.secondary} onClick={onClose}>
               취소
             </button>
-            <button className={btn.primary} disabled={!name.trim() || !a.university.trim() || dupRound} onClick={save}>
+            <button className={btn.primary} disabled={!name.trim() || !a.university.trim() } onClick={save}>
               저장
             </button>
           </div>

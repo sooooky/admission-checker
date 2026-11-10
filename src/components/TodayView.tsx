@@ -1,6 +1,5 @@
 import { useMemo } from 'react';
 import type { Application, ScheduleEvent, Student, UniversityRegistry } from '../lib/types';
-import { roundLongLabel } from '../lib/types';
 import { COMMON_SCHEDULE } from '../data/commonSchedule';
 import { resolveUniv } from '../lib/univLookup';
 import { allInsights } from '../lib/insights';
@@ -27,7 +26,6 @@ export function TodayView(p: {
   const today = ymd(now);
   const tomorrow = ymd(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1));
   const in7 = ymd(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 7));
-  const round = p.settings.currentRound;
   const byId = useMemo(() => new Map(p.students.map((s) => [s.id, s])), [p.students]);
   const nameOf = (id: string) => {
     const n = byId.get(id)?.name ?? '';
@@ -42,27 +40,27 @@ export function TodayView(p: {
   const tomorrowEvents = events.filter((e) => covers(e, tomorrow) && !covers(e, today));
   const deadlines = events.filter((e) => /마감|등록/.test(e.title) && endOf(e) > today && endOf(e) <= in7);
 
-  const insights = useMemo(() => allInsights({ version: 1, students: p.students, applications: p.applications }), [p.students, p.applications]);
+  const insights = useMemo(() => allInsights({ version: 2, students: p.students, applications: p.applications }), [p.students, p.applications]);
   const appliedUnivs = [...new Set(p.applications.map((a) => a.university))];
   const todo = {
     undecided: insights.filter((i) => i.needsEnrollDecision),
     warned: insights.filter((i) => i.warnings.length),
     waiting: p.applications.filter((a) => a.status === '예비'),
     minCheck: p.applications.filter((a) => a.minReq === '확인필요'),
-    roundCheck: p.applications.filter((a) => needsCheck(a, round)),
+    roundCheck: p.applications.filter((a) => needsCheck(a)),
     noLink: appliedUnivs.filter((u) => !resolveUniv(u, p.universities[u]).url && !resolveUniv(u, p.universities[u]).home),
     noEvent: appliedUnivs.filter((u) => !p.schedule.some((e) => e.univ === u)),
   };
 
   const EventBlock = ({ e, withApps }: { e: ScheduleEvent; withApps: boolean }) => {
     const apps = e.univ ? p.applications.filter((a) => a.university === e.univ) : [];
-    const pending = apps.filter((a) => needsCheck(a, round));
+    const pending = apps.filter((a) => needsCheck(a));
     return (
       <li className={`rounded-xl border p-3 ${eventColor(e)}`}>
         <div className="flex flex-wrap items-center gap-2">
           <span className="font-semibold">{eventLabel(e)}</span>
           {!e.univ && <span className="rounded bg-white/70 px-1.5 text-[11px]">전국 공통</span>}
-          {e.univ && <span className="text-xs">원서 {apps.length}건 · 이번 차수 미확인 {pending.length}건</span>}
+          {e.univ && <span className="text-xs">원서 {apps.length}건 · 오늘 미확인 {pending.length}건</span>}
         </div>
         {e.memo && <p className="mt-1 text-xs">{e.memo}</p>}
         {withApps && apps.length > 0 && (
@@ -75,7 +73,7 @@ export function TodayView(p: {
                   {a.status}
                   {a.status === '예비' && a.waitNo && ` ${a.waitNo}번`}
                 </span>
-                {needsCheck(a, round) && <span className="text-[11px] font-semibold text-blue-600">확인 필요</span>}
+                {needsCheck(a) && <span className="text-[11px] font-semibold text-blue-600">확인 필요</span>}
                 <button
                   className="ml-auto rounded-md bg-blue-600 px-2 py-0.5 text-xs font-semibold text-white"
                   onClick={() => openLookup(a, byId.get(a.studentId), p.universities, p.onSetUnivUrl)}
@@ -112,7 +110,7 @@ export function TodayView(p: {
       <section className="rounded-2xl bg-white p-4 shadow-sm">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h2 className="text-lg font-bold">{shortDate(today)} 오늘 할 일</h2>
-          <span className="text-xs text-slate-500">기록할 차수: {roundLongLabel(round)}</span>
+
         </div>
         <h3 className="mt-3 text-sm font-semibold text-slate-600">오늘 일정</h3>
         {todayEvents.length === 0 ? (
@@ -171,8 +169,8 @@ export function TodayView(p: {
           <Card n={todo.undecided.length} label="합격했지만 등록 대학 미정" tab="list" tone="border-yellow-200 bg-yellow-50 text-yellow-900">
             {names(todo.undecided.map((i) => i.student.id))}
           </Card>
-          <Card n={todo.roundCheck.length} label={`이번 차수(${roundLongLabel(round)}) 미확인 원서`} tab="list" tone="border-blue-200 bg-blue-50 text-blue-900">
-            [조회 목록] → "이번 차수 미확인" 필터
+          <Card n={todo.roundCheck.length} label="오늘 미확인 원서 (결과 미확정)" tab="list" tone="border-blue-200 bg-blue-50 text-blue-900">
+            [조회 목록] → "오늘 미확인" 필터
           </Card>
           <Card n={todo.waiting.length} label="예비 대기 중인 원서" tab="wait" tone="border-amber-200 bg-amber-50 text-amber-900">
             {names(todo.waiting.map((a) => a.studentId))}
