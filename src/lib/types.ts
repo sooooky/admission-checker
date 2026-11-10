@@ -8,6 +8,23 @@ export interface Student {
   birth: string;
   /** 숫자만 (예: 01012345678). 없으면 빈 문자열 */
   phone: string;
+  /** 학생 메모 (원서와 별개) */
+  memo?: string;
+}
+
+export const MIN_REQ = ['', '확인필요', '충족', '미충족', '해당없음'] as const;
+export type MinReq = (typeof MIN_REQ)[number];
+/** 수능 최저 상태를 순서대로 돌립니다: 미입력 → 확인필요 → 충족 → 미충족 → 해당없음 → 미입력 */
+export const nextMinReq = (m: MinReq | undefined): MinReq => MIN_REQ[(MIN_REQ.indexOf(m ?? '') + 1) % MIN_REQ.length];
+
+/** 엑셀 등의 값을 수능 최저 상태로 해석 */
+export function parseMinReq(raw: string): MinReq {
+  const v = raw.replace(/\s/g, '').toLowerCase();
+  if (!v) return '';
+  if (/미충족|불충족|미달|^x$|^×$|^✗$|^no$|^n$/.test(v)) return '미충족';
+  if (/충족|^o$|^○$|^yes$|^y$|통과/.test(v)) return '충족';
+  if (/해당없|없음|^무$|^-$|^없$|미적용/.test(v)) return '해당없음';
+  return '확인필요';
 }
 
 /** 발표 차수: 0 = 최초 발표, n = n차 충원 */
@@ -33,6 +50,8 @@ export interface Application {
   waitNo: string; // 예비 번호
   round: string; // 충원 차수
   note: string;
+  /** 수능 최저학력기준 충족 여부 */
+  minReq?: MinReq;
   checkedAt: string | null; // ISO
   /** 차수별 결과 기록 (round 오름차순). status/waitNo/round/checkedAt 는 마지막 기록에서 계산됩니다. */
   history: ResultEntry[];

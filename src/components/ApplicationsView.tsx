@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { Application, ScheduleEvent, Status, Student, UniversityRegistry } from '../lib/types';
-import { MAX_ROUND, STATUSES, entryText, recordRound, roundLabel, roundLongLabel } from '../lib/types';
+import { MAX_ROUND, STATUSES, entryText, nextMinReq, recordRound, roundLabel, roundLongLabel, type MinReq } from '../lib/types';
 import { birthAs, formatBirth, formatDateTime, maskName, maskPhone } from '../lib/format';
 import { encodePayload } from '../lib/autofill';
 import type { Settings } from '../lib/storage';
@@ -88,7 +88,7 @@ export function askUnivUrl(univ: string, current: string, onSet: (univ: string, 
 export function ApplicationsView(p: Props) {
   const [groupBy, setGroupBy] = useState<'univ' | 'student'>('univ');
   const [query, setQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<Status | '전체' | '이번차수'>('전체');
+  const [statusFilter, setStatusFilter] = useState<Status | '전체' | '이번차수' | '최저확인필요' | '최저미충족'>('전체');
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
 
   const studentById = useMemo(() => new Map(p.students.map((s) => [s.id, s])), [p.students]);
@@ -98,10 +98,14 @@ export function ApplicationsView(p: Props) {
     return p.applications.filter((a) => {
       if (statusFilter === '이번차수') {
         if (!needsCheck(a, p.settings.currentRound)) return false;
+      } else if (statusFilter === '최저확인필요') {
+        if (a.minReq !== '확인필요') return false;
+      } else if (statusFilter === '최저미충족') {
+        if (a.minReq !== '미충족') return false;
       } else if (statusFilter !== '전체' && a.status !== statusFilter) return false;
       if (!q) return true;
       const s = studentById.get(a.studentId);
-      return [s?.name, a.university, a.major, a.examNo].some((x) => x?.toLowerCase().includes(q));
+      return [s?.name, s?.memo, a.university, a.major, a.examNo, a.note].some((x) => x?.toLowerCase().includes(q));
     });
   }, [p.applications, query, statusFilter, studentById, p.settings.currentRound]);
 
@@ -194,6 +198,21 @@ export function ApplicationsView(p: Props) {
               {s} {s === '전체' ? total : counts[s]}
             </button>
           ))}
+          <span className="mx-1 self-center text-slate-300">|</span>
+          {(
+            [
+              ['최저확인필요', '최저 확인필요', '확인필요'],
+              ['최저미충족', '최저 미충족', '미충족'],
+            ] as const
+          ).map(([k, label, m]) => (
+            <button
+              key={k}
+              onClick={() => setStatusFilter(statusFilter === k ? '전체' : k)}
+              className={`rounded-full px-3 py-1 text-xs font-medium ${statusFilter === k ? 'bg-slate-800 text-white' : MIN_STYLE[m]}`}
+            >
+              {label} {p.applications.filter((a) => a.minReq === m).length}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -254,6 +273,7 @@ export function ApplicationsView(p: Props) {
                 <span className="text-xs text-slate-500">
                   {p.hideInfo ? '****' : formatBirth(student.birth)}
                   {student.phone && ` · ${maskPhone(student.phone)}`}
+                  {student.memo && <span className="ml-2 rounded bg-yellow-50 px-1.5 py-0.5 text-yellow-800">📝 {student.memo}</span>}
                 </span>
               )}
             </header>
@@ -327,11 +347,23 @@ function AppRow({
           ) : (
             <span className="font-semibold">{showUniv ? a.university : hideInfo ? maskName(name) : name}</span>
           )}
+          {!continued && !showUniv && s?.memo && (
+            <button className="text-xs" title={`학생 메모: ${s.memo}`} onClick={() => onEdit(a)}>
+              📝
+            </button>
+          )}
           <span className={`rounded px-1.5 py-0.5 text-[11px] font-medium ${STATUS_STYLE[a.status].badge}`}>
             {a.status}
             {a.status === '예비' && a.waitNo && ` ${a.waitNo}번`}
             {a.status === '충원합격' && a.round && ` ${a.round}차`}
           </span>
+          <button
+            className={`rounded px-1.5 py-0.5 text-[11px] font-medium ${MIN_STYLE[a.minReq ?? '']}`}
+            onClick={() => onChangeApp(a.id, (x) => ({ ...x, minReq: nextMinReq(x.minReq) }))}
+            title="수능 최저: 누를 때마다 미입력 → 확인필요 → 충족 → 미충족 → 해당없음"
+          >
+            {MIN_LABEL[a.minReq ?? '']}
+          </button>
         </div>
         <p className="truncate text-xs text-slate-500">
           {!continued && (a.major || '모집단위 미입력')}
@@ -491,3 +523,18 @@ function UnivHeaderLinks({ univ, universities, schedule, onSetUnivUrl }: Props &
     </div>
   );
 }
+
+const MIN_STYLE: Record<MinReq, string> = {
+  '': 'border border-dashed border-slate-300 text-slate-400',
+  확인필요: 'bg-amber-100 text-amber-800',
+  충족: 'bg-green-100 text-green-800',
+  미충족: 'bg-rose-100 text-rose-800',
+  해당없음: 'bg-slate-100 text-slate-400',
+};
+const MIN_LABEL: Record<MinReq, string> = {
+  '': '최저 ?',
+  확인필요: '최저 확인',
+  충족: '최저 충족',
+  미충족: '최저 미충족',
+  해당없음: '최저 없음',
+};
