@@ -88,15 +88,15 @@ export function ImportModal({
             <p className="font-semibold text-slate-700">지원하는 엑셀 형태</p>
             <ul className="mt-1 list-disc space-y-0.5 pl-5">
               <li>
-                <b>원서별 한 줄</b>: 이름 | 생년월일 | 핸드폰 | 대학명 | 전형명 | 모집단위 | 수험번호
+                <b>원서별 한 줄</b>: 이름 | 생년월일 | 핸드폰 | 대학명 | 모집단위 | 수험번호
               </li>
               <li>
-                <b>학생별 한 줄</b>: 이름 | 생년월일 | 핸드폰 | 대학1 | 전형1 | 모집단위1 | 수험번호1 | 대학2 | …
+                <b>학생별 한 줄</b>: 이름 | 생년월일 | 핸드폰 | 대학1 | 모집단위1 | 수험번호1 | 대학2 | …
               </li>
               <li>열 이름이 달라도 다음 화면에서 직접 지정할 수 있습니다. 핸드폰 열은 없어도 됩니다.</li>
             </ul>
             <button className={`${btn.secondary} mt-3`} onClick={() => downloadTemplate()}>
-              ⬇️ 업로드 양식 받기
+              ⬇️ 샘플 엑셀(양식) 받기
             </button>
           </div>
         </div>
@@ -156,11 +156,10 @@ export function ImportModal({
               </div>
               <div className="space-y-2">
                 {mapping.groups.map((g, gi) => (
-                  <div key={gi} className="grid items-end gap-2 rounded-xl bg-slate-50 p-3 sm:grid-cols-[repeat(4,1fr)_auto]">
+                  <div key={gi} className="grid items-end gap-2 rounded-xl bg-slate-50 p-3 sm:grid-cols-[repeat(3,1fr)_auto]">
                     {(
                       [
                         ['univ', '대학 *'],
-                        ['track', '전형'],
                         ['major', '모집단위'],
                         ['examNo', '수험번호'],
                       ] as const

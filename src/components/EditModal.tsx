@@ -108,7 +108,6 @@ export function EditModal({
         <div className="grid gap-2 sm:grid-cols-2">
           {field('대학 *', <input className={inputCls} value={a.university} onChange={(e) => setA({ ...a, university: e.target.value })} />)}
           {field('수험번호', <input className={inputCls} value={a.examNo} onChange={(e) => setA({ ...a, examNo: e.target.value })} />)}
-          {field('전형', <input className={inputCls} value={a.track} onChange={(e) => setA({ ...a, track: e.target.value })} />)}
           {field('모집단위', <input className={inputCls} value={a.major} onChange={(e) => setA({ ...a, major: e.target.value })} />)}
         </div>
 

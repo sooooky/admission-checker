@@ -67,7 +67,7 @@ export function ApplicationsView(p: Props) {
       } else if (statusFilter !== '전체' && a.status !== statusFilter) return false;
       if (!q) return true;
       const s = studentById.get(a.studentId);
-      return [s?.name, a.university, a.major, a.track, a.examNo].some((x) => x?.toLowerCase().includes(q));
+      return [s?.name, a.university, a.major, a.examNo].some((x) => x?.toLowerCase().includes(q));
     });
   }, [p.applications, query, statusFilter, studentById, p.settings.currentRound]);
 
@@ -302,7 +302,7 @@ function AppRow({
           </span>
         </div>
         <p className="truncate text-xs text-slate-500">
-          {[a.track, a.major].filter(Boolean).join(' · ') || '전형/모집단위 미입력'}
+          {a.major || '모집단위 미입력'}
           {a.checkedAt && <span className="text-slate-400"> · {formatDateTime(a.checkedAt)} 확인</span>}
         </p>
         {a.history.length > 0 && (
