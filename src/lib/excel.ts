@@ -1,6 +1,6 @@
 import type * as ExcelJSType from 'exceljs';
 import type { Application, Student, VaultData } from './types';
-import { newId } from './types';
+import { historyText, newId, roundLongLabel } from './types';
 import { downloadBlob } from './storage';
 import { formatBirth, formatDateTime, formatPhone, normalizeBirth, normalizePhone, normalizeUniv } from './format';
 
@@ -193,6 +193,7 @@ export function buildImport(
         round: '',
         note: '',
         checkedAt: null,
+        history: [],
       };
       const k = appKey(app);
       if (appKeys.has(k)) continue;
@@ -236,6 +237,7 @@ export async function exportResults(data: VaultData, opts: { includePhone: boole
     { header: '결과', key: 'status', width: 10 },
     { header: '예비번호', key: 'waitNo', width: 9 },
     { header: '충원차수', key: 'round', width: 9 },
+    { header: '경과', key: 'history', width: 40 },
     { header: '메모', key: 'note', width: 24 },
     { header: '확인일시', key: 'checkedAt', width: 12 },
   ];
@@ -257,6 +259,7 @@ export async function exportResults(data: VaultData, opts: { includePhone: boole
       status: a.status,
       waitNo: a.waitNo,
       round: a.round,
+      history: historyText(a),
       note: a.note,
       checkedAt: formatDateTime(a.checkedAt),
     });
@@ -289,6 +292,33 @@ export async function exportResults(data: VaultData, opts: { includePhone: boole
     });
   }
   styleHeader(sum);
+
+  // 예비번호 변화: 예비를 한 번이라도 받은 원서 × 차수
+  const waits = sorted.filter((a) => a.history.some((h) => h.status === '예비'));
+  if (waits.length) {
+    const maxRound = Math.max(0, ...waits.flatMap((a) => a.history.map((h) => h.round)));
+    const wsw = wb.addWorksheet('예비번호 변화');
+    wsw.columns = [
+      { header: '이름', key: 'name', width: 10 },
+      { header: '대학', key: 'univ', width: 18 },
+      { header: '모집단위', key: 'major', width: 18 },
+      ...Array.from({ length: maxRound + 1 }, (_, r) => ({ header: roundLongLabel(r), key: `r${r}`, width: 11 })),
+      { header: '현재', key: 'status', width: 10 },
+    ];
+    for (const a of waits) {
+      const row: Record<string, string | number> = {
+        name: byId.get(a.studentId)?.name ?? '',
+        univ: a.university,
+        major: a.major,
+        status: a.status,
+      };
+      for (const h of a.history) {
+        row[`r${h.round}`] = h.status === '예비' ? (h.waitNo ? Number(h.waitNo) : '예비') : h.status;
+      }
+      wsw.addRow(row);
+    }
+    styleHeader(wsw);
+  }
 
   const d = new Date();
   await saveWorkbook(wb, `입시결과_${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}.xlsx`);

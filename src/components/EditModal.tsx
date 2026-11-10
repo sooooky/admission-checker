@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { Application, Student } from '../lib/types';
-import { STATUSES, newId } from '../lib/types';
+import { MAX_ROUND, STATUSES, newId, roundLongLabel, withHistory, type ResultEntry } from '../lib/types';
 import { formatBirth, formatPhone, normalizeBirth, normalizePhone, normalizeUniv } from '../lib/format';
 import { Modal, btn, inputCls } from './ui';
 
@@ -37,8 +37,14 @@ export function EditModal({
       round: '',
       note: '',
       checkedAt: null,
+      history: [],
     },
   );
+  const [history, setHistory] = useState<ResultEntry[]>(app?.history ?? []);
+  const setEntry = (i: number, patch: Partial<ResultEntry>) =>
+    setHistory((h) => h.map((x, j) => (j === i ? { ...x, ...patch } : x)));
+  const usedRounds = new Set(history.map((h) => h.round));
+  const dupRound = history.length !== usedRounds.size;
 
   const pickStudent = (id: string) => {
     setStudentId(id);
@@ -62,7 +68,13 @@ export function EditModal({
       birth: normalizeBirth(birth),
       phone: normalizePhone(phone),
     };
-    onSave({ ...a, university: normalizeUniv(a.university), studentId: student.id, examNo: a.examNo.replace(/\s/g, '') }, student);
+    onSave(
+      withHistory(
+        { ...a, university: normalizeUniv(a.university), studentId: student.id, examNo: a.examNo.replace(/\s/g, '') },
+        history.map((h) => ({ ...h, waitNo: h.status === '예비' ? h.waitNo : '' })),
+      ),
+      student,
+    );
     onClose();
   };
 
@@ -98,25 +110,56 @@ export function EditModal({
           {field('수험번호', <input className={inputCls} value={a.examNo} onChange={(e) => setA({ ...a, examNo: e.target.value })} />)}
           {field('전형', <input className={inputCls} value={a.track} onChange={(e) => setA({ ...a, track: e.target.value })} />)}
           {field('모집단위', <input className={inputCls} value={a.major} onChange={(e) => setA({ ...a, major: e.target.value })} />)}
-          {field(
-            '결과',
-            <select
-              className={inputCls}
-              value={a.status}
-              onChange={(e) =>
-                setA({ ...a, status: e.target.value as Application['status'], checkedAt: a.checkedAt ?? new Date().toISOString() })
-              }
-            >
-              {STATUSES.map((s) => (
-                <option key={s}>{s}</option>
-              ))}
-            </select>,
-          )}
-          <div className="grid grid-cols-2 gap-2">
-            {field('예비번호', <input className={inputCls} value={a.waitNo} onChange={(e) => setA({ ...a, waitNo: e.target.value })} />)}
-            {field('충원차수', <input className={inputCls} value={a.round} onChange={(e) => setA({ ...a, round: e.target.value })} />)}
-          </div>
         </div>
+
+        <fieldset className="space-y-2 rounded-xl bg-slate-50 p-3">
+          <legend className="px-1 text-xs font-semibold text-slate-600">차수별 결과 기록</legend>
+          {history.length === 0 && <p className="text-xs text-slate-500">아직 기록이 없습니다.</p>}
+          {history.map((h, i) => (
+            <div key={i} className="grid grid-cols-[1fr_1fr_5rem_auto] items-center gap-2">
+              <select
+                className={`${inputCls} py-1.5`}
+                value={h.round}
+                onChange={(e) => setEntry(i, { round: Number(e.target.value) })}
+              >
+                {Array.from({ length: MAX_ROUND + 1 }, (_, r) => (
+                  <option key={r} value={r}>
+                    {roundLongLabel(r)}
+                  </option>
+                ))}
+              </select>
+              <select
+                className={`${inputCls} py-1.5`}
+                value={h.status}
+                onChange={(e) => setEntry(i, { status: e.target.value as ResultEntry['status'] })}
+              >
+                {STATUSES.filter((x) => x !== '미조회').map((st) => (
+                  <option key={st}>{st}</option>
+                ))}
+              </select>
+              <input
+                className={`${inputCls} py-1.5`}
+                placeholder="예비번호"
+                disabled={h.status !== '예비'}
+                value={h.status === '예비' ? h.waitNo : ''}
+                onChange={(e) => setEntry(i, { waitNo: e.target.value.replace(/[^\d]/g, '') })}
+              />
+              <button className="px-1 text-xs text-slate-400 hover:text-red-600" onClick={() => setHistory(history.filter((_, j) => j !== i))}>
+                삭제
+              </button>
+            </div>
+          ))}
+          {dupRound && <p className="text-xs text-red-600">같은 차수가 두 번 들어 있습니다. 하나를 고치거나 지워 주세요.</p>}
+          <button
+            className={btn.ghost}
+            onClick={() => {
+              const next = history.length ? Math.max(...history.map((h) => h.round)) + 1 : 0;
+              setHistory([...history, { round: Math.min(next, MAX_ROUND), status: '예비', waitNo: '', at: new Date().toISOString() }]);
+            }}
+          >
+            + 차수 기록 추가
+          </button>
+        </fieldset>
         {field(
           '메모',
           <textarea className={inputCls} rows={2} value={a.note} onChange={(e) => setA({ ...a, note: e.target.value })} />,
@@ -142,7 +185,7 @@ export function EditModal({
             <button className={btn.secondary} onClick={onClose}>
               취소
             </button>
-            <button className={btn.primary} disabled={!name.trim() || !a.university.trim()} onClick={save}>
+            <button className={btn.primary} disabled={!name.trim() || !a.university.trim() || dupRound} onClick={save}>
               저장
             </button>
           </div>
