@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Application, ScheduleEvent, Student, UniversityRegistry, VaultData } from './lib/types';
-import { emptyVault, migrateVault } from './lib/types';
+import { emptyVault, migrateVault, newId } from './lib/types';
 import { WaitlistView } from './components/WaitlistView';
 import { CalendarView } from './components/CalendarView';
 import { createKey, decryptJSON, encryptJSON, type KeyHandle } from './lib/crypto';
@@ -159,6 +159,33 @@ export default function App() {
       return { ...d, students, applications };
     });
 
+  /** 같은 학생·같은 대학에 원서 하나 더 (모집단위만 다르게) */
+  const addSibling = (app: Application) => {
+    const major = prompt(
+      `${app.university}에 지원한 다른 모집단위(학과·전형)를 입력해 주세요.\n수험번호는 같은 번호로 복사되며, 다르면 ✎ 수정에서 바꿀 수 있습니다.`,
+    );
+    if (major === null) return;
+    const sib: Application = {
+      ...app,
+      id: newId(),
+      major: major.trim(),
+      status: '미조회',
+      waitNo: '',
+      round: '',
+      note: '',
+      checkedAt: null,
+      history: [],
+    };
+    commit((d) => {
+      // 같은 학생·대학 원서들 바로 뒤에 넣어 순서를 유지
+      const idx = d.applications.reduce((last, a, i) => (a.studentId === app.studentId && a.university === app.university ? i : last), -1);
+      const applications = [...d.applications];
+      applications.splice(idx + 1, 0, sib);
+      return { ...d, applications };
+    });
+    toast(`${app.university} 원서를 추가했습니다`);
+  };
+
   const deleteApp = (app: Application) =>
     commit((d) => {
       const applications = d.applications.filter((a) => a.id !== app.id);
@@ -276,6 +303,7 @@ export default function App() {
               schedule={schedule}
               onSetUnivUrl={setUnivUrl}
               onEdit={(a) => setModal({ edit: a })}
+              onAddSibling={addSibling}
               onAdd={() => setModal({ edit: null })}
             />
           ))}

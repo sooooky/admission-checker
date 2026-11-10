@@ -266,6 +266,7 @@ export async function exportResults(data: VaultData, opts: { includePhone: boole
   const sum = wb.addWorksheet('학생별 요약');
   sum.columns = [
     { header: '이름', key: 'name', width: 10 },
+    { header: '지원 대학 수', key: 'univs', width: 11 },
     { header: '원서 수', key: 'count', width: 8 },
     { header: '합격', key: 'pass', width: 40 },
     { header: '예비', key: 'wait', width: 40 },
@@ -276,6 +277,7 @@ export async function exportResults(data: VaultData, opts: { includePhone: boole
     const label = (a: Application) => `${a.university}${a.major ? ' ' + a.major : ''}`;
     sum.addRow({
       name: s.name,
+      univs: new Set(apps.map((a) => a.university)).size,
       count: apps.length,
       pass: apps
         .filter((a) => a.status === '합격' || a.status === '충원합격')

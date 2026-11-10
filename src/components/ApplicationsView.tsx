@@ -20,6 +20,7 @@ interface Props {
   schedule: ScheduleEvent[];
   onSetUnivUrl: (univ: string, url: string) => void;
   onEdit: (app: Application) => void;
+  onAddSibling: (app: Application) => void;
   onAdd: () => void;
 }
 
@@ -115,13 +116,22 @@ export function ApplicationsView(p: Props) {
       .sort(([a], [b]) => nameOf(a).localeCompare(nameOf(b), 'ko'))
       .map(([key, apps]) => ({
         key,
+        // 같은 학생·같은 대학 원서는 붙어서(원래 순서대로) 나오도록 정렬
         apps: apps.sort((x, y) =>
           groupBy === 'univ'
-            ? (studentById.get(x.studentId)?.name ?? '').localeCompare(studentById.get(y.studentId)?.name ?? '', 'ko')
+            ? (studentById.get(x.studentId)?.name ?? '').localeCompare(studentById.get(y.studentId)?.name ?? '', 'ko') ||
+              x.studentId.localeCompare(y.studentId)
             : x.university.localeCompare(y.university, 'ko'),
         ),
       }));
   }, [filtered, groupBy, studentById]);
+
+  /** 학생·대학별 원서 수 (한 대학에 여러 원서) */
+  const clusterSize = useMemo(() => {
+    const m = new Map<string, number>();
+    p.applications.forEach((a) => m.set(`${a.studentId}|${a.university}`, (m.get(`${a.studentId}|${a.university}`) ?? 0) + 1));
+    return m;
+  }, [p.applications]);
 
   const counts = useMemo(() => {
     const c = Object.fromEntries(STATUSES.map((s) => [s, 0])) as Record<Status, number>;
@@ -249,9 +259,12 @@ export function ApplicationsView(p: Props) {
             </header>
             {!isCollapsed && (
               <ul className="divide-y divide-slate-100">
-                {apps.map((a) => (
+                {apps.map((a, i) => (
                   <AppRow
                     key={a.id}
+                    continued={i > 0 && apps[i - 1].studentId === a.studentId && apps[i - 1].university === a.university}
+                    firstExamNo={apps.find((x) => x.studentId === a.studentId && x.university === a.university)?.examNo ?? ''}
+                    clusterSize={clusterSize.get(`${a.studentId}|${a.university}`) ?? 1}
                     app={a}
                     student={studentById.get(a.studentId)}
                     showUniv={!isUniv}
@@ -278,8 +291,22 @@ function AppRow({
   hideInfo,
   onChangeApp,
   onEdit,
+  onAddSibling,
   onLookup,
-}: Props & { app: Application; student?: Student; showUniv: boolean; linkKind: LinkKind; onLookup: () => void }) {
+  continued,
+  firstExamNo,
+  clusterSize,
+}: Props & {
+  app: Application;
+  student?: Student;
+  showUniv: boolean;
+  linkKind: LinkKind;
+  onLookup: () => void;
+  /** 같은 학생·같은 대학의 두 번째 이후 원서 */
+  continued: boolean;
+  firstExamNo: string;
+  clusterSize: number;
+}) {
   const round = settings.currentRound;
   const thisEntry = a.history.find((h) => h.round === round);
   const prevWait = [...a.history].reverse().find((h) => h.round < round && h.status === '예비');
@@ -290,10 +317,16 @@ function AppRow({
   const other = settings.birthDigits === 6 ? 8 : 6;
 
   return (
-    <li className="flex flex-col gap-3 px-4 py-3 lg:flex-row lg:items-center">
-      <div className="min-w-0 lg:w-72">
+    <li
+      className={`flex flex-col gap-3 py-3 pr-4 lg:flex-row lg:items-center ${continued ? 'bg-slate-50/70 pl-9' : 'pl-4'}`}
+    >
+      <div className={`min-w-0 ${continued ? 'lg:w-[15.75rem]' : 'lg:w-72'}`}>
         <div className="flex items-center gap-2">
-          <span className="font-semibold">{showUniv ? a.university : hideInfo ? maskName(name) : name}</span>
+          {continued ? (
+            <span className="font-semibold text-slate-700">↳ {a.major || '모집단위 미입력'}</span>
+          ) : (
+            <span className="font-semibold">{showUniv ? a.university : hideInfo ? maskName(name) : name}</span>
+          )}
           <span className={`rounded px-1.5 py-0.5 text-[11px] font-medium ${STATUS_STYLE[a.status].badge}`}>
             {a.status}
             {a.status === '예비' && a.waitNo && ` ${a.waitNo}번`}
@@ -301,8 +334,9 @@ function AppRow({
           </span>
         </div>
         <p className="truncate text-xs text-slate-500">
-          {a.major || '모집단위 미입력'}
-          {a.checkedAt && <span className="text-slate-400"> · {formatDateTime(a.checkedAt)} 확인</span>}
+          {!continued && (a.major || '모집단위 미입력')}
+          {!continued && clusterSize > 1 && <span className="font-medium text-blue-600"> · 이 대학 원서 {clusterSize}개</span>}
+          {a.checkedAt && <span className="text-slate-400">{continued ? '' : ' · '}{formatDateTime(a.checkedAt)} 확인</span>}
         </p>
         {a.history.length > 0 && (
           <div className="mt-1 flex flex-wrap items-center gap-0.5 text-[11px]">
@@ -320,7 +354,18 @@ function AppRow({
         )}
       </div>
 
-      {/* 조회 + 복사 */}
+      {/* 조회 + 복사 (같은 대학 둘째 원서부터는 첫 줄에서 한 번만 조회) */}
+      {continued ? (
+        <div className="flex flex-wrap items-center gap-1.5 text-xs text-slate-400">
+          {a.examNo && a.examNo !== firstExamNo ? (
+            <button className={btn.chip} onClick={() => copyText(a.examNo, '수험번호')} title="수험번호 복사">
+              #{hideInfo ? '••••' : a.examNo}
+            </button>
+          ) : (
+            <span>위 원서와 같은 조회 결과에서 확인</span>
+          )}
+        </div>
+      ) : (
       <div className="flex flex-wrap items-center gap-1.5">
         <button
           className={`rounded-md px-2.5 py-1 text-xs font-semibold text-white ${LINK_STYLE[linkKind]}`}
@@ -357,6 +402,7 @@ function AppRow({
           </button>
         )}
       </div>
+      )}
 
       {/* 이번 차수 결과 기록 */}
       <div className="flex flex-wrap items-center gap-1 lg:ml-auto">
@@ -379,6 +425,15 @@ function AppRow({
             value={thisEntry.waitNo}
             onChange={(e) => onChangeApp(a.id, (x) => recordRound(x, round, '예비', e.target.value.replace(/[^\d]/g, '')))}
           />
+        )}
+        {!continued && (
+          <button
+            className="rounded-md px-1.5 py-1 text-xs font-medium text-blue-600 hover:bg-blue-50"
+            onClick={() => onAddSibling(a)}
+            title="같은 대학에 지원한 다른 모집단위·전형의 원서를 추가합니다"
+          >
+            +학과
+          </button>
         )}
         <button className="rounded-md px-2 py-1 text-xs text-slate-400 hover:bg-slate-100" onClick={() => onEdit(a)} title="수정·기록 정정·메모">
           ✎{a.note && <span className="ml-0.5 text-blue-500">•</span>}
