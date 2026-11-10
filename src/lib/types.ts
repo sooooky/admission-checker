@@ -14,8 +14,10 @@ export interface Student {
 
 export const MIN_REQ = ['', '확인필요', '충족', '미충족', '해당없음'] as const;
 export type MinReq = (typeof MIN_REQ)[number];
-/** 수능 최저 상태를 순서대로 돌립니다: 미입력 → 확인필요 → 충족 → 미충족 → 해당없음 → 미입력 */
-export const nextMinReq = (m: MinReq | undefined): MinReq => MIN_REQ[(MIN_REQ.indexOf(m ?? '') + 1) % MIN_REQ.length];
+/** 수능 최저가 있는 원서인지 ('' 와 '해당없음' 은 최저 없음으로 취급) */
+export const hasMinReq = (m: MinReq | undefined) => m === '확인필요' || m === '충족' || m === '미충족';
+/** 최저가 있는 원서의 칩을 누르면: 확인필요 → 충족 → 미충족 → 확인필요 */
+export const nextMinReq = (m: MinReq | undefined): MinReq => (m === '확인필요' ? '충족' : m === '충족' ? '미충족' : '확인필요');
 
 /** 엑셀 등의 값을 수능 최저 상태로 해석 */
 export function parseMinReq(raw: string): MinReq {

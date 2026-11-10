@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { Application, Student } from '../lib/types';
-import { MAX_ROUND, MIN_REQ, STATUSES, newId, roundLongLabel, withHistory, type ResultEntry } from '../lib/types';
+import { MAX_ROUND, STATUSES, newId, roundLongLabel, withHistory, type ResultEntry } from '../lib/types';
 import { formatBirth, formatPhone, normalizeBirth, normalizePhone, normalizeUniv } from '../lib/format';
 import { Modal, btn, inputCls } from './ui';
 
@@ -117,13 +117,16 @@ export function EditModal({
           {field('수험번호', <input className={inputCls} value={a.examNo} onChange={(e) => setA({ ...a, examNo: e.target.value })} />)}
           {field('모집단위', <input className={inputCls} value={a.major} onChange={(e) => setA({ ...a, major: e.target.value })} />)}
           {field(
-            '수능 최저',
-            <select className={inputCls} value={a.minReq ?? ''} onChange={(e) => setA({ ...a, minReq: e.target.value as Application['minReq'] })}>
-              {MIN_REQ.map((m) => (
-                <option key={m} value={m}>
-                  {m || '미입력'}
-                </option>
-              ))}
+            '수능 최저 (있는 원서만)',
+            <select
+              className={inputCls}
+              value={a.minReq === '해당없음' ? '' : (a.minReq ?? '')}
+              onChange={(e) => setA({ ...a, minReq: e.target.value as Application['minReq'] })}
+            >
+              <option value="">없음 (기본)</option>
+              <option value="확인필요">있음 · 확인필요</option>
+              <option value="충족">있음 · 충족</option>
+              <option value="미충족">있음 · 미충족</option>
             </select>,
           )}
         </div>

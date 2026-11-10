@@ -1,6 +1,6 @@
 import type * as ExcelJSType from 'exceljs';
 import type { Application, Student, VaultData } from './types';
-import { historyText, newId, parseMinReq, roundLongLabel } from './types';
+import { hasMinReq, historyText, newId, parseMinReq, roundLongLabel } from './types';
 import { downloadBlob } from './storage';
 import { formatBirth, formatDateTime, formatPhone, normalizeBirth, normalizePhone, normalizeUniv } from './format';
 
@@ -291,7 +291,7 @@ export async function exportResults(data: VaultData, opts: { includePhone: boole
       univ: a.university,
       major: a.major,
       examNo: a.examNo,
-      minReq: a.minReq ?? '',
+      minReq: hasMinReq(a.minReq) ? a.minReq : '',
       status: a.status,
       waitNo: a.waitNo,
       round: a.round,
@@ -415,7 +415,7 @@ export async function downloadTemplate() {
     ['양식A', '원서 1건 = 1줄. 원서가 많은 학생(전문대 포함 10~20개)도 줄만 추가하면 되어 가장 편합니다.'],
     ['양식B', '학생 1명 = 1줄. 대학1·모집단위1·수험번호1 … 처럼 번호를 붙여 옆으로 나열합니다. 대학7, 대학8 … 처럼 열을 더 붙여도 됩니다.'],
     ['필수 열', '이름, 대학(대학명). 나머지(생년월일·핸드폰·모집단위·수험번호)는 비어 있어도 됩니다.'],
-    ['선택 열', '수능최저(충족/미충족/해당없음/확인필요, O/X도 가능)와 학생 메모(비고) 열이 있으면 함께 불러옵니다. 없으면 앱에서 직접 입력하면 됩니다.'],
+    ['선택 열', '수능최저와 학생 메모(비고) 열은 없어도 됩니다. 수능최저는 최저가 있는 원서만 적으세요(확인필요/충족/미충족, O/X도 가능). 비워 두면 "최저 없음"입니다.'],
     ['열 순서', '열 순서는 상관없습니다. 앱이 열 이름(머리글)을 보고 자동으로 맞추며, 불러오기 화면에서 직접 바꿀 수도 있습니다.'],
     ['생년월일', '070315, 20070315, 2007-03-15, 2007.3.15 모두 가능합니다.'],
     ['핸드폰', '학생 본인 번호. 대학 조회에 휴대폰 번호가 필요한 경우에만 쓰입니다. 010-1234-5678 또는 01012345678.'],
@@ -435,7 +435,7 @@ export async function downloadTemplate() {
     width: h === '대학명' || h === '모집단위' ? 18 : h === '학생 메모' ? 28 : 14,
     style: text,
   }));
-  const sampleMin = ['충족', '해당없음', '확인필요'];
+  const sampleMin = ['충족', '', ''];
   const sampleMemo: Record<string, string> = { 김예시: '정시 병행 예정', 이연습: '보건계열 희망', 박샘플: '' };
   for (const s of SAMPLE_STUDENTS)
     s.apps.forEach(([u, m, e], i) => a.addRow([s.name, s.birth, s.phone, u, m, e, sampleMin[i % 3], i === 0 ? sampleMemo[s.name] : '']));

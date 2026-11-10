@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { Application, ScheduleEvent, Status, Student, UniversityRegistry } from '../lib/types';
-import { MAX_ROUND, STATUSES, entryText, nextMinReq, recordRound, roundLabel, roundLongLabel, type MinReq } from '../lib/types';
+import { MAX_ROUND, STATUSES, entryText, hasMinReq, nextMinReq, recordRound, roundLabel, roundLongLabel, type MinReq } from '../lib/types';
 import { birthAs, formatBirth, formatDateTime, maskName, maskPhone } from '../lib/format';
 import { encodePayload } from '../lib/autofill';
 import type { Settings } from '../lib/storage';
@@ -198,21 +198,25 @@ export function ApplicationsView(p: Props) {
               {s} {s === '전체' ? total : counts[s]}
             </button>
           ))}
-          <span className="mx-1 self-center text-slate-300">|</span>
-          {(
-            [
-              ['최저확인필요', '최저 확인필요', '확인필요'],
-              ['최저미충족', '최저 미충족', '미충족'],
-            ] as const
-          ).map(([k, label, m]) => (
-            <button
-              key={k}
-              onClick={() => setStatusFilter(statusFilter === k ? '전체' : k)}
-              className={`rounded-full px-3 py-1 text-xs font-medium ${statusFilter === k ? 'bg-slate-800 text-white' : MIN_STYLE[m]}`}
-            >
-              {label} {p.applications.filter((a) => a.minReq === m).length}
-            </button>
-          ))}
+          {p.applications.some((a) => hasMinReq(a.minReq)) && (
+            <>
+              <span className="mx-1 self-center text-slate-300">|</span>
+              {(
+                [
+                  ['최저확인필요', '최저 확인필요', '확인필요'],
+                  ['최저미충족', '최저 미충족', '미충족'],
+                ] as const
+              ).map(([k, label, m]) => (
+                <button
+                  key={k}
+                  onClick={() => setStatusFilter(statusFilter === k ? '전체' : k)}
+                  className={`rounded-full px-3 py-1 text-xs font-medium ${statusFilter === k ? 'bg-slate-800 text-white' : MIN_STYLE[m]}`}
+                >
+                  {label} {p.applications.filter((a) => a.minReq === m).length}
+                </button>
+              ))}
+            </>
+          )}
         </div>
       </div>
 
@@ -357,13 +361,15 @@ function AppRow({
             {a.status === '예비' && a.waitNo && ` ${a.waitNo}번`}
             {a.status === '충원합격' && a.round && ` ${a.round}차`}
           </span>
-          <button
-            className={`rounded px-1.5 py-0.5 text-[11px] font-medium ${MIN_STYLE[a.minReq ?? '']}`}
-            onClick={() => onChangeApp(a.id, (x) => ({ ...x, minReq: nextMinReq(x.minReq) }))}
-            title="수능 최저: 누를 때마다 미입력 → 확인필요 → 충족 → 미충족 → 해당없음"
-          >
-            {MIN_LABEL[a.minReq ?? '']}
-          </button>
+          {hasMinReq(a.minReq) && (
+            <button
+              className={`rounded px-1.5 py-0.5 text-[11px] font-medium ${MIN_STYLE[a.minReq ?? '']}`}
+              onClick={() => onChangeApp(a.id, (x) => ({ ...x, minReq: nextMinReq(x.minReq) }))}
+              title="수능 최저: 누를 때마다 확인필요 → 충족 → 미충족 (최저 없음으로 되돌리려면 ✎ 수정)"
+            >
+              {MIN_LABEL[a.minReq ?? '']}
+            </button>
+          )}
         </div>
         <p className="truncate text-xs text-slate-500">
           {!continued && (a.major || '모집단위 미입력')}
