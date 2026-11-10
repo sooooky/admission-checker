@@ -113,6 +113,8 @@ export interface UniversityInfo {
   plan?: string;
   /** 내장 목록에서 캠퍼스 등을 직접 고른 경우 그 이름 */
   dirName?: string;
+  /** 숨긴 내장(모집요강) 일정 id */
+  hiddenBuiltin?: string[];
 }
 
 /** 발표·등록 일정 (개인정보 아님) */
@@ -124,6 +126,8 @@ export interface ScheduleEvent {
   time: string; // HH:MM (없으면 '')
   title: string;
   memo: string;
+  /** 모집요강에서 가져온 내장 일정 (저장하지 않고 화면에서만 계산) */
+  builtin?: boolean;
 }
 
 export const EVENT_PRESETS = [

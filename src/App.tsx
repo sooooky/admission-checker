@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Application, ScheduleEvent, Student, UniversityRegistry, VaultData } from './lib/types';
 import { emptyVault, migrateVault, newId } from './lib/types';
 import { WaitlistView } from './components/WaitlistView';
@@ -30,6 +30,7 @@ import { SettingsModal, type BackupPayload } from './components/SettingsModal';
 import { Toaster, btn, toast } from './components/ui';
 import { downloadTemplate } from './lib/excel';
 import { mergeSchedule } from './lib/schedule';
+import { builtinBaseId, builtinEvents } from './lib/builtinSchedule';
 
 type Phase = 'setup' | 'locked' | 'unlocked';
 type Tab = 'today' | 'list' | 'wait' | 'calendar' | 'stats' | 'univ' | 'guide';
@@ -205,6 +206,19 @@ export default function App() {
       return { ...d, applications, students };
     });
 
+  // 모집요강 내장 일정 (학생이 지원했거나 등록한 대학)
+  const univNames = useMemo(
+    () => [...new Set([...data.applications.map((a) => a.university), ...Object.keys(universities)])],
+    [data.applications, universities],
+  );
+  const builtin = useMemo(() => builtinEvents(univNames, universities), [univNames, universities]);
+  const allSchedule = useMemo(() => [...schedule, ...builtin], [schedule, builtin]);
+  const hideBuiltin = (univ: string, eventId: string) =>
+    setUniversities((u) => {
+      const cur = u[univ] ?? { url: '', memo: '' };
+      return { ...u, [univ]: { ...cur, hiddenBuiltin: [...new Set([...(cur.hiddenBuiltin ?? []), builtinBaseId(eventId)])] } };
+    });
+
   const setUnivUrl = (univ: string, url: string) =>
     setUniversities((u) => ({ ...u, [univ]: { memo: u[univ]?.memo ?? '', url } }));
 
@@ -313,7 +327,7 @@ export default function App() {
               settings={settings}
               hideInfo={hideInfo}
               onChangeApp={changeApp}
-              schedule={schedule}
+              schedule={allSchedule}
               onSetUnivUrl={setUnivUrl}
               onEdit={(a) => setModal({ edit: a })}
               onAddSibling={addSibling}
@@ -334,7 +348,7 @@ export default function App() {
             students={data.students}
             applications={data.applications}
             universities={universities}
-            schedule={schedule}
+            schedule={allSchedule}
             settings={settings}
             hideInfo={hideInfo}
             onNavigate={setTab}
@@ -352,6 +366,7 @@ export default function App() {
             hideInfo={hideInfo}
             onChangeSchedule={setSchedule}
             onSetUnivUrl={setUnivUrl}
+            onHideBuiltin={hideBuiltin}
           />
         )}
         {tab === 'univ' && (
@@ -359,6 +374,7 @@ export default function App() {
             applications={data.applications}
             universities={universities}
             schedule={schedule}
+            builtin={builtin}
             onChange={setUniversities}
             onChangeSchedule={setSchedule}
           />
