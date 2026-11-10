@@ -3,6 +3,8 @@ import type { Application, ScheduleEvent, Student, UniversityRegistry, VaultData
 import { emptyVault, migrateVault, newId } from './lib/types';
 import { WaitlistView } from './components/WaitlistView';
 import { CalendarView } from './components/CalendarView';
+import { TodayView } from './components/TodayView';
+import { StatsView } from './components/StatsView';
 import { createKey, decryptJSON, encryptJSON, type KeyHandle } from './lib/crypto';
 import {
   downloadText,
@@ -30,7 +32,7 @@ import { downloadTemplate } from './lib/excel';
 import { mergeSchedule } from './lib/schedule';
 
 type Phase = 'setup' | 'locked' | 'unlocked';
-type Tab = 'list' | 'wait' | 'calendar' | 'univ' | 'guide';
+type Tab = 'today' | 'list' | 'wait' | 'calendar' | 'stats' | 'univ' | 'guide';
 
 export default function App() {
   const [phase, setPhase] = useState<Phase>(() => (loadVaultBlob() ? 'locked' : 'setup'));
@@ -83,6 +85,7 @@ export default function App() {
       const { data: d, handle } = await decryptJSON<VaultData>(blob, password);
       keyRef.current = handle;
       setData(migrateVault(d));
+      setTab(d.applications.length ? 'today' : 'list');
       setPhase('unlocked');
       return null;
     } catch {
@@ -186,11 +189,20 @@ export default function App() {
     toast(`${app.university} 원서를 추가했습니다`);
   };
 
+  const setEnrolled = (studentId: string, appId: string | null) =>
+    commit((d) => ({
+      ...d,
+      students: d.students.map((s) => (s.id === studentId ? { ...s, enrolledAppId: appId ?? undefined } : s)),
+    }));
+
   const deleteApp = (app: Application) =>
     commit((d) => {
       const applications = d.applications.filter((a) => a.id !== app.id);
       const used = new Set(applications.map((a) => a.studentId));
-      return { ...d, applications, students: d.students.filter((s) => used.has(s.id)) };
+      const students = d.students
+        .filter((s) => used.has(s.id))
+        .map((s) => (s.enrolledAppId === app.id ? { ...s, enrolledAppId: undefined } : s));
+      return { ...d, applications, students };
     });
 
   const setUnivUrl = (univ: string, url: string) =>
@@ -230,9 +242,11 @@ export default function App() {
   }
 
   const tabs: [Tab, string][] = [
+    ['today', '오늘 할 일'],
     ['list', '조회 목록'],
     ['wait', '예비 현황'],
     ['calendar', '발표 일정'],
+    ['stats', '진학 실적'],
     ['univ', '대학 정보'],
     ['guide', '사용법 · 자동입력'],
   ];
@@ -304,6 +318,7 @@ export default function App() {
               onSetUnivUrl={setUnivUrl}
               onEdit={(a) => setModal({ edit: a })}
               onAddSibling={addSibling}
+              onSetEnrolled={setEnrolled}
               onAdd={() => setModal({ edit: null })}
             />
           ))}
@@ -316,6 +331,20 @@ export default function App() {
             onEdit={(a) => setModal({ edit: a })}
           />
         )}
+        {tab === 'today' && (
+          <TodayView
+            students={data.students}
+            applications={data.applications}
+            universities={universities}
+            schedule={schedule}
+            settings={settings}
+            hideInfo={hideInfo}
+            onNavigate={setTab}
+            onSetUnivUrl={setUnivUrl}
+            onEdit={(a) => setModal({ edit: a })}
+          />
+        )}
+        {tab === 'stats' && <StatsView data={data} />}
         {tab === 'calendar' && (
           <CalendarView
             students={data.students}

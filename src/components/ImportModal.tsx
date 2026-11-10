@@ -157,13 +157,15 @@ export function ImportModal({
               </div>
               <div className="space-y-2">
                 {mapping.groups.map((g, gi) => (
-                  <div key={gi} className="grid items-end gap-2 rounded-xl bg-slate-50 p-3 sm:grid-cols-[repeat(4,1fr)_auto]">
+                  <div key={gi} className="grid items-end gap-2 rounded-xl bg-slate-50 p-3 sm:grid-cols-3 lg:grid-cols-[repeat(6,1fr)_auto]">
                     {(
                       [
                         ['univ', '대학 *'],
                         ['major', '모집단위'],
                         ['examNo', '수험번호'],
                         ['minReq', '수능최저 (선택)'],
+                        ['admType', '모집시기 (선택)'],
+                        ['gun', '정시 군 (선택)'],
                       ] as const
                     ).map(([key, label]) => (
                       <div key={key}>

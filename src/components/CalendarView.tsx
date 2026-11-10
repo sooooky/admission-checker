@@ -11,7 +11,7 @@ import { Modal, btn, inputCls, toast } from './ui';
 // ───── 날짜 도우미 (모두 현지 시간 기준 YYYY-MM-DD) ─────
 const pad = (n: number) => String(n).padStart(2, '0');
 export const ymd = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-const parseYmd = (s: string) => {
+export const parseYmd = (s: string) => {
   const [y, m, d] = s.split('-').map(Number);
   return new Date(y, m - 1, d);
 };
@@ -27,8 +27,8 @@ export function nextPreset(title: string) {
   if (title === '최초합격 발표') return '1차 충원 발표';
   return title;
 }
-const endOf = (e: ScheduleEvent) => e.endDate || e.date;
-const covers = (e: ScheduleEvent, day: string) => e.date <= day && day <= endOf(e);
+export const endOf = (e: ScheduleEvent) => e.endDate || e.date;
+export const covers = (e: ScheduleEvent, day: string) => e.date <= day && day <= endOf(e);
 
 /** 이 대학의 오늘 이후 첫 일정 */
 export function nextEventFor(univ: string, schedule: ScheduleEvent[]) {
@@ -38,7 +38,7 @@ export function nextEventFor(univ: string, schedule: ScheduleEvent[]) {
     .sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time))[0];
 }
 
-function eventColor(e: ScheduleEvent) {
+export function eventColor(e: ScheduleEvent) {
   if (!e.univ) return 'bg-slate-100 text-slate-700 border-slate-200';
   if (/충원/.test(e.title)) return 'bg-teal-50 text-teal-800 border-teal-200';
   if (/최초|합격/.test(e.title)) return 'bg-green-50 text-green-800 border-green-200';
@@ -46,7 +46,7 @@ function eventColor(e: ScheduleEvent) {
   return 'bg-indigo-50 text-indigo-800 border-indigo-200';
 }
 
-const eventLabel = (e: ScheduleEvent) => `${e.univ ? e.univ.replace(/대학교/, '대') + ' ' : ''}${e.title}${e.time ? ' ' + e.time : ''}`;
+export const eventLabel = (e: ScheduleEvent) => `${e.univ ? e.univ.replace(/대학교/, '대') + ' ' : ''}${e.title}${e.time ? ' ' + e.time : ''}`;
 
 interface Props {
   students: Student[];

@@ -1,6 +1,7 @@
 import type * as ExcelJSType from 'exceljs';
 import type { Application, Student, VaultData } from './types';
-import { hasMinReq, historyText, newId, parseMinReq, roundLongLabel } from './types';
+import { admLabel, hasMinReq, historyText, newId, parseAdm, parseMinReq, roundLongLabel } from './types';
+import { computeStats, pct } from './insights';
 import { downloadBlob } from './storage';
 import { formatBirth, formatDateTime, formatPhone, normalizeBirth, normalizePhone, normalizeUniv } from './format';
 
@@ -113,6 +114,8 @@ export interface AppGroup {
   major: number;
   examNo: number;
   minReq: number;
+  admType: number;
+  gun: number;
 }
 export interface ColumnMapping {
   name: number;
@@ -121,14 +124,16 @@ export interface ColumnMapping {
   memo: number;
   groups: AppGroup[];
 }
-export const emptyGroup = (): AppGroup => ({ univ: -1, major: -1, examNo: -1, minReq: -1 });
+export const emptyGroup = (): AppGroup => ({ univ: -1, major: -1, examNo: -1, minReq: -1, admType: -1, gun: -1 });
 
-type Field = 'name' | 'birth' | 'phone' | 'memo' | 'univ' | 'major' | 'examNo' | 'minReq';
+type Field = 'name' | 'birth' | 'phone' | 'memo' | 'univ' | 'major' | 'examNo' | 'minReq' | 'admType' | 'gun';
 
 function classify(header: string): Field | null {
   const h = header.replace(/\s|\(|\)|\[|\]|_/g, '').toLowerCase();
   if (/보호자|학부모|부모|담임/.test(h)) return null;
   if (/최저/.test(h)) return 'minReq';
+  if (/모집시기|수시정시|수시\/정시|^시기\d*$|^모집구분\d*$/.test(h)) return 'admType';
+  if (/^(모집)?군\d*$|가나다군/.test(h)) return 'gun';
   if (/메모|비고|특이사항/.test(h)) return 'memo';
   if (/수험번호|수험|접수번호|exam/.test(h)) return 'examNo';
   if (/전형/.test(h)) return null; // 전형은 사용하지 않음
@@ -224,6 +229,7 @@ export function buildImport(
         round: '',
         note: '',
         minReq: parseMinReq(get(row, g.minReq)),
+        ...parseAdm(get(row, g.admType), get(row, g.gun)),
         checkedAt: null,
         history: [],
       };
@@ -260,12 +266,14 @@ export async function exportResults(data: VaultData, opts: { includePhone: boole
   const ExcelJS = await loadExcelJS();
   const wb = new ExcelJS.Workbook();
   const byId = new Map(data.students.map((s) => [s.id, s]));
+  const enrolledIds = new Set(data.students.map((s) => s.enrolledAppId).filter(Boolean));
 
   const ws = wb.addWorksheet('원서별 결과');
   ws.columns = [
     { header: '이름', key: 'name', width: 10 },
     ...(opts.includeBirth ? [{ header: '생년월일', key: 'birth', width: 12 }] : []),
     ...(opts.includePhone ? [{ header: '핸드폰', key: 'phone', width: 15 }] : []),
+    { header: '모집시기', key: 'adm', width: 10 },
     { header: '대학', key: 'univ', width: 18 },
     { header: '모집단위', key: 'major', width: 18 },
     { header: '수험번호', key: 'examNo', width: 14 },
@@ -273,6 +281,7 @@ export async function exportResults(data: VaultData, opts: { includePhone: boole
     { header: '결과', key: 'status', width: 10 },
     { header: '예비번호', key: 'waitNo', width: 9 },
     { header: '충원차수', key: 'round', width: 9 },
+    { header: '등록', key: 'enrolled', width: 6 },
     { header: '경과', key: 'history', width: 40 },
     { header: '원서 메모', key: 'note', width: 24 },
     { header: '확인일시', key: 'checkedAt', width: 12 },
@@ -288,6 +297,7 @@ export async function exportResults(data: VaultData, opts: { includePhone: boole
       name: s?.name ?? '',
       birth: s ? formatBirth(s.birth) : '',
       phone: s ? formatPhone(s.phone) : '',
+      adm: admLabel(a),
       univ: a.university,
       major: a.major,
       examNo: a.examNo,
@@ -295,6 +305,7 @@ export async function exportResults(data: VaultData, opts: { includePhone: boole
       status: a.status,
       waitNo: a.waitNo,
       round: a.round,
+      enrolled: enrolledIds.has(a.id) ? '★' : '',
       history: historyText(a),
       note: a.note,
       checkedAt: formatDateTime(a.checkedAt),
@@ -310,6 +321,7 @@ export async function exportResults(data: VaultData, opts: { includePhone: boole
     { header: '합격', key: 'pass', width: 40 },
     { header: '예비', key: 'wait', width: 40 },
     { header: '미조회', key: 'todo', width: 8 },
+    { header: '등록 대학', key: 'enrolled', width: 26 },
     { header: '학생 메모', key: 'memo', width: 40 },
   ];
   for (const s of [...data.students].sort((a, b) => a.name.localeCompare(b.name, 'ko'))) {
@@ -328,10 +340,44 @@ export async function exportResults(data: VaultData, opts: { includePhone: boole
         .map((a) => label(a) + (a.waitNo ? `(${a.waitNo}번)` : ''))
         .join(', '),
       todo: apps.filter((a) => a.status === '미조회').length,
+      enrolled: (() => {
+        const e = apps.find((a) => a.id === s.enrolledAppId);
+        return e ? `${e.university}${e.major ? ' ' + e.major : ''}` : '';
+      })(),
       memo: s.memo ?? '',
     });
   }
   styleHeader(sum);
+
+  // 진학 실적
+  const st = computeStats(data);
+  const perf = wb.addWorksheet('진학 실적');
+  perf.columns = [
+    { header: '항목', key: 'k', width: 22 },
+    { header: '값', key: 'v', width: 14 },
+    { header: '', key: 'c', width: 12 },
+    { header: '', key: 'd', width: 12 },
+    { header: '', key: 'e', width: 12 },
+    { header: '', key: 'f', width: 12 },
+    { header: '', key: 'g', width: 12 },
+  ];
+  const kv: [string, string | number][] = [
+    ['학생 수', st.students],
+    ['원서 수', st.applications],
+    ['합격 학생 수 (1곳 이상)', st.passedStudents],
+    ['학생 기준 합격률', pct(st.passedStudents, st.students)],
+    ['합격 원서 수 (충원 포함)', st.passedApps],
+    ['등록 확정 학생 수', st.enrolledStudents],
+    ['합격했으나 등록 미정', st.undecided],
+  ];
+  kv.forEach(([k, v]) => perf.addRow({ k, v }));
+  perf.addRow({});
+  perf.addRow({ k: '구분', v: '원서', c: '합격 원서', d: '지원 학생', e: '합격 학생' }).font = { bold: true };
+  for (const g of [...st.byAdm, ...st.byKind]) perf.addRow({ k: g.key, v: g.total, c: g.passed, d: g.students, e: g.passedStudents });
+  perf.addRow({});
+  perf.addRow({ k: '대학', v: '구분', c: '원서', d: '합격', e: '충원합격', f: '예비', g: '등록' }).font = { bold: true };
+  for (const u of st.univs) perf.addRow({ k: u.university, v: u.kind, c: u.total, d: u.pass, e: u.extra, f: u.wait, g: u.enrolled });
+  styleHeader(perf);
 
   // 예비번호 변화: 예비를 한 번이라도 받은 원서 × 차수
   const waits = sorted.filter((a) => a.history.some((h) => h.status === '예비'));
@@ -415,6 +461,7 @@ export async function downloadTemplate() {
     ['양식A', '원서 1건 = 1줄. 원서가 많은 학생(전문대 포함 10~20개)도 줄만 추가하면 되어 가장 편합니다.'],
     ['양식B', '학생 1명 = 1줄. 대학1·모집단위1·수험번호1 … 처럼 번호를 붙여 옆으로 나열합니다. 대학7, 대학8 … 처럼 열을 더 붙여도 됩니다.'],
     ['필수 열', '이름, 대학(대학명). 나머지(생년월일·핸드폰·모집단위·수험번호)는 비어 있어도 됩니다.'],
+    ['모집시기·군', '정시 원서는 "모집시기" 열에 정시, "군" 열에 가/나/다/군외를 적으면 됩니다. 비워 두면 수시로 불러옵니다.'],
     ['선택 열', '수능최저와 학생 메모(비고) 열은 없어도 됩니다. 수능최저는 최저가 있는 원서만 적으세요(확인필요/충족/미충족, O/X도 가능). 비워 두면 "최저 없음"입니다.'],
     ['열 순서', '열 순서는 상관없습니다. 앱이 열 이름(머리글)을 보고 자동으로 맞추며, 불러오기 화면에서 직접 바꿀 수도 있습니다.'],
     ['생년월일', '070315, 20070315, 2007-03-15, 2007.3.15 모두 가능합니다.'],

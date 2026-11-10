@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { Application, Student } from '../lib/types';
-import { MAX_ROUND, STATUSES, newId, roundLongLabel, withHistory, type ResultEntry } from '../lib/types';
+import { ADM_TYPES, GUNS, MAX_ROUND, STATUSES, newId, roundLongLabel, withHistory, type ResultEntry } from '../lib/types';
 import { formatBirth, formatPhone, normalizeBirth, normalizePhone, normalizeUniv } from '../lib/format';
 import { Modal, btn, inputCls } from './ui';
 
@@ -116,6 +116,35 @@ export function EditModal({
           {field('대학 *', <input className={inputCls} value={a.university} onChange={(e) => setA({ ...a, university: e.target.value })} />)}
           {field('수험번호', <input className={inputCls} value={a.examNo} onChange={(e) => setA({ ...a, examNo: e.target.value })} />)}
           {field('모집단위', <input className={inputCls} value={a.major} onChange={(e) => setA({ ...a, major: e.target.value })} />)}
+          {field(
+            '모집 시기',
+            <div className="flex gap-2">
+              <select
+                className={inputCls}
+                value={a.admType ?? '수시'}
+                onChange={(e) => {
+                  const admType = e.target.value as Application['admType'];
+                  setA({ ...a, admType, gun: admType === '정시' ? a.gun : '' });
+                }}
+              >
+                {ADM_TYPES.map((t) => (
+                  <option key={t} value={t}>
+                    {t === '추가' ? '추가모집' : t}
+                  </option>
+                ))}
+              </select>
+              {a.admType === '정시' && (
+                <select className={inputCls} value={a.gun ?? ''} onChange={(e) => setA({ ...a, gun: e.target.value as Application['gun'] })}>
+                  <option value="">군 선택</option>
+                  {GUNS.map((g) => (
+                    <option key={g} value={g}>
+                      {g === '군외' ? '군외 (전문대·산업대 등)' : `${g}군`}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>,
+          )}
           {field(
             '수능 최저 (있는 원서만)',
             <select
