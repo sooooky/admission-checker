@@ -1,10 +1,11 @@
 import type { EncryptedBlob } from './crypto';
 import { isEncryptedBlob } from './crypto';
-import type { UniversityRegistry } from './types';
+import type { ScheduleEvent, UniversityRegistry } from './types';
 
 const VAULT_KEY = 'admchk_vault_v1';
 const UNIV_KEY = 'admchk_universities_v1';
 const SETTINGS_KEY = 'admchk_settings_v1';
+export const SCHEDULE_KEY = 'admchk_schedule_v1';
 
 export interface Settings {
   autoLockMinutes: number;
@@ -32,6 +33,12 @@ export const saveVaultBlob = (blob: EncryptedBlob) => localStorage.setItem(VAULT
 export const loadUniversities = (): UniversityRegistry => readJSON<UniversityRegistry>(UNIV_KEY) ?? {};
 export const saveUniversities = (r: UniversityRegistry) => localStorage.setItem(UNIV_KEY, JSON.stringify(r));
 
+export const loadSchedule = (): ScheduleEvent[] => {
+  const s = readJSON<ScheduleEvent[]>(SCHEDULE_KEY);
+  return Array.isArray(s) ? s : [];
+};
+export const saveSchedule = (s: ScheduleEvent[]) => localStorage.setItem(SCHEDULE_KEY, JSON.stringify(s));
+
 export const loadSettings = (): Settings => ({ ...defaultSettings, ...(readJSON<Partial<Settings>>(SETTINGS_KEY) ?? {}) });
 export const saveSettings = (s: Settings) => localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
 
@@ -39,7 +46,7 @@ export const saveSettings = (s: Settings) => localStorage.setItem(SETTINGS_KEY, 
 export const wipeVault = () => localStorage.removeItem(VAULT_KEY);
 /** 이 앱이 저장한 모든 것을 삭제 */
 export const wipeAll = () => {
-  [VAULT_KEY, UNIV_KEY, SETTINGS_KEY].forEach((k) => localStorage.removeItem(k));
+  [VAULT_KEY, UNIV_KEY, SETTINGS_KEY, SCHEDULE_KEY].forEach((k) => localStorage.removeItem(k));
 };
 
 export function downloadText(filename: string, text: string, mime = 'application/json') {

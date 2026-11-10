@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import type { Settings } from '../lib/storage';
-import type { UniversityRegistry, VaultData } from '../lib/types';
+import type { ScheduleEvent, UniversityRegistry, VaultData } from '../lib/types';
 import { decryptJSON, isEncryptedBlob } from '../lib/crypto';
 import { exportResults } from '../lib/excel';
 import { Modal, btn, inputCls, toast } from './ui';
@@ -8,6 +8,7 @@ import { Modal, btn, inputCls, toast } from './ui';
 export interface BackupPayload {
   vault: VaultData;
   universities: UniversityRegistry;
+  schedule?: ScheduleEvent[];
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
