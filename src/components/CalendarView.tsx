@@ -3,7 +3,7 @@ import type { Application, ScheduleEvent, Student, UniversityRegistry } from '..
 import { EVENT_PRESETS, newId } from '../lib/types';
 import { COMMON_SCHEDULE } from '../data/commonSchedule';
 import { DIRECTORY } from '../lib/univLookup';
-import { builtinEvents } from '../lib/builtinSchedule';
+import { builtinEvents, isExamEvent } from '../lib/builtinSchedule';
 import { maskName, normalizeUniv } from '../lib/format';
 import { STATUS_STYLE } from './status';
 import { openLookup } from './ApplicationsView';
@@ -41,6 +41,7 @@ export function nextEventFor(univ: string, schedule: ScheduleEvent[]) {
 
 export function eventColor(e: ScheduleEvent) {
   if (!e.univ) return 'bg-slate-100 text-slate-700 border-slate-200';
+  if (/^(면접|논술|실기)/.test(e.title)) return 'bg-orange-50 text-orange-800 border-orange-200';
   if (/충원/.test(e.title)) return 'bg-teal-50 text-teal-800 border-teal-200';
   if (/최초|합격/.test(e.title)) return 'bg-green-50 text-green-800 border-green-200';
   if (/등록/.test(e.title)) return 'bg-violet-50 text-violet-800 border-violet-200';
@@ -73,6 +74,7 @@ export function CalendarView(p: Props) {
   /** 내장 일정을 '내 일정으로 수정' 중이면 원래 내장 일정 */
   const [editingFrom, setEditingFrom] = useState<ScheduleEvent | null>(null);
   const [showAllBuiltin, setShowAllBuiltin] = useState(false);
+  const [showExams, setShowExams] = useState(true);
 
   const appliedUnivs = useMemo(() => new Set(p.applications.map((a) => a.university)), [p.applications]);
   const builtin = useMemo(
@@ -83,9 +85,11 @@ export function CalendarView(p: Props) {
     () =>
       [
         ...(showCommon ? COMMON_SCHEDULE : []),
-        ...[...p.schedule, ...builtin].filter((e) => !onlyApplied || appliedUnivs.has(e.univ)),
+        ...[...p.schedule, ...builtin]
+          .filter((e) => !onlyApplied || appliedUnivs.has(e.univ))
+          .filter((e) => showExams || !isExamEvent(e)),
       ].sort((a, b) => (a.date + (a.time || '99') + a.univ).localeCompare(b.date + (b.time || '99') + b.univ)),
-    [p.schedule, builtin, showCommon, onlyApplied, appliedUnivs],
+    [p.schedule, builtin, showCommon, onlyApplied, appliedUnivs, showExams],
   );
 
   const upcoming = events.filter((e) => endOf(e) >= today).slice(0, 8);
@@ -127,8 +131,11 @@ export function CalendarView(p: Props) {
             <label className="flex items-center gap-1.5">
               <input type="checkbox" checked={onlyApplied} onChange={(e) => setOnlyApplied(e.target.checked)} /> 학생이 지원한 대학만
             </label>
-            <label className="flex items-center gap-1.5" title="학생이 지원하지 않은 대학의 모집요강 최초합격 발표일도 모두 표시">
-              <input type="checkbox" checked={showAllBuiltin} onChange={(e) => setShowAllBuiltin(e.target.checked)} /> 모든 대학 모집요강 일정
+            <label className="flex items-center gap-1.5">
+              <input type="checkbox" checked={showExams} onChange={(e) => setShowExams(e.target.checked)} /> 면접·논술·실기
+            </label>
+            <label className="flex items-center gap-1.5" title="학생이 지원하지 않은 대학의 기본 일정도 모두 표시">
+              <input type="checkbox" checked={showAllBuiltin} onChange={(e) => setShowAllBuiltin(e.target.checked)} /> 모든 대학 기본 일정
             </label>
             <button className={btn.primary} onClick={() => setEditing(newEvent())}>
               + 일정 추가
@@ -245,7 +252,7 @@ export function CalendarView(p: Props) {
                   <span className="font-semibold">{eventLabel(e)}</span>
                   {e.endDate && <span className="text-xs">~ {shortDate(e.endDate)}</span>}
                   {!e.univ && <span className="rounded bg-white/70 px-1.5 text-[11px]">전국 공통</span>}
-                  {e.builtin && <span className="rounded bg-white/70 px-1.5 text-[11px]">모집요강</span>}
+                  {e.builtin && <span className="rounded bg-white/70 px-1.5 text-[11px]">기본 일정</span>}
                   {e.univ && (
                     <span className="ml-auto flex gap-1">
                       <button
@@ -253,10 +260,10 @@ export function CalendarView(p: Props) {
                         onClick={() => {
                           if (e.builtin) {
                             setEditingFrom(e);
-                            setEditing({ ...e, id: newId(), builtin: undefined, memo: e.memo.replace(/^📄 모집요강[^:]*:\s*/, '모집요강: ') });
+                            setEditing({ ...e, id: newId(), builtin: undefined, memo: e.memo.replace(/^📄\s*/, '') });
                           } else setEditing(e);
                         }}
-                        title={e.builtin ? '내 일정으로 복사해서 고칩니다 (원래 모집요강 일정은 숨김)' : ''}
+                        title={e.builtin ? '내 일정으로 복사해서 고칩니다 (원래 기본 일정은 숨김)' : ''}
                       >
                         수정
                       </button>

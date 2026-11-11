@@ -4,7 +4,7 @@ import { newId } from '../lib/types';
 import { EventModal, nextPreset, shortDate, ymd } from './CalendarView';
 import { Modal, btn, toast } from './ui';
 
-/** 한 대학의 발표·등록 일정을 보고 추가·수정·삭제(모집요강 일정은 숨기기)하는 창 */
+/** 한 대학의 발표·등록 일정을 보고 추가·수정·삭제(기본 일정은 숨기기)하는 창 */
 export function UnivScheduleModal({
   univ,
   events,
@@ -14,7 +14,7 @@ export function UnivScheduleModal({
   onHideBuiltin,
 }: {
   univ: string;
-  /** 이 대학의 일정 (직접 넣은 일정 + 모집요강 내장 일정) */
+  /** 이 대학의 일정 (직접 넣은 일정 + 기본 일정) */
   events: ScheduleEvent[];
   onClose: () => void;
   onSave: (ev: ScheduleEvent) => void;
@@ -59,7 +59,7 @@ export function UnivScheduleModal({
                     {e.time && ` ${e.time}`}
                   </span>
                   <span>{e.title}</span>
-                  {e.builtin && <span className="rounded bg-white px-1.5 text-[11px] text-slate-500">모집요강</span>}
+                  {e.builtin && <span className="rounded bg-white px-1.5 text-[11px] text-slate-500">기본 일정</span>}
                   {past && <span className="text-[11px]">지난 일정</span>}
                   <span className="ml-auto flex gap-1">
                     <button
@@ -67,13 +67,13 @@ export function UnivScheduleModal({
                       onClick={() =>
                         e.builtin
                           ? setEditing({
-                              ev: { ...e, id: newId(), builtin: undefined, memo: e.memo.replace(/^📄 모집요강[^:]*:\s*/, '모집요강: ') },
+                              ev: { ...e, id: newId(), builtin: undefined, memo: e.memo.replace(/^📄\s*/, '') },
                               isNew: true,
                               from: e,
                             })
                           : setEditing({ ev: e, isNew: false })
                       }
-                      title={e.builtin ? '내 일정으로 복사해서 고칩니다 (원래 모집요강 일정은 숨김)' : ''}
+                      title={e.builtin ? '내 일정으로 복사해서 고칩니다 (원래 기본 일정은 숨김)' : ''}
                     >
                       수정
                     </button>

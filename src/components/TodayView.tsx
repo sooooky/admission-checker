@@ -53,7 +53,7 @@ export function TodayView(
         <div className="flex flex-wrap items-center gap-2">
           <span className="font-semibold">{eventLabel(e)}</span>
           {!e.univ && <span className="rounded bg-white/70 px-1.5 text-[11px]">전국 공통</span>}
-          {e.builtin && <span className="rounded bg-white/70 px-1.5 text-[11px]">모집요강</span>}
+          {e.builtin && <span className="rounded bg-white/70 px-1.5 text-[11px]">기본 일정</span>}
           {e.univ && <span className="text-xs">원서 {apps.length}건 · 오늘 미확인 {pending.length}건</span>}
         </div>
         {e.memo && <p className="mt-1 text-xs">{e.memo}</p>}

@@ -16,7 +16,7 @@
 - 대학 조회 주소(`admchk_universities_v1`), 일정(`admchk_schedule_v1`), 설정은 개인정보가 아니므로 평문 저장.
 - `src/data/univDirectory.ts`: 내장 4년제 대학 목록(입학처·시행계획 링크). 대학명 매칭은 `lib/univLookup.ts`의 `findUniversity`/`resolveUniv`(캠퍼스·줄임말 처리).
 - `src/lib/insights.ts`: 등록 대학·정시 규칙 경고(`studentInsight`)와 진학 실적 집계(`computeStats`). 모집 시기는 `admTypeOf()`(없으면 수시).
-- `src/data/commonSchedule.ts`: 전국 공통 일정. `src/data/univSchedule.ts`: 모집요강에서 뽑은 대학별 최초합격 발표일(내장 일정). `lib/builtinSchedule.ts` 가 학생 지원·등록 대학에 맞춰 화면용 일정(`builtin: true`, 저장하지 않음)으로 만들고, 숨김은 `UniversityInfo.hiddenBuiltin`. 학년도가 바뀌면 data 폴더 파일들을 갱신.
+- `src/data/commonSchedule.ts`: 전국 공통 일정. `src/data/univSchedule.ts`: 대학별 기본 일정(합격자·1단계·충원 발표, 면접·논술·실기; 수시 일정 달력 엑셀의 '일정목록' 시트에서 변환). `lib/builtinSchedule.ts` 가 학생 지원·등록 대학에 맞춰 화면용 일정(`builtin: true`, 저장하지 않음)으로 만들고, 숨김은 `UniversityInfo.hiddenBuiltin`. 학년도가 바뀌면 data 폴더 파일들을 갱신.
 
 ## 원칙
 - 학생 개인정보를 외부로 전송하는 코드를 추가하지 말 것. 배포 빌드의 CSP(`vite.config.ts`)는 `connect-src 'none'`.

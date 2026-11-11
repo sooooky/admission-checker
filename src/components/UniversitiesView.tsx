@@ -21,7 +21,7 @@ export function UniversitiesView({
   applications: Application[];
   universities: UniversityRegistry;
   schedule: ScheduleEvent[];
-  /** 모집요강 내장 일정 (표시용) */
+  /** 기본(내장) 일정 (표시용) */
   builtin: ScheduleEvent[];
   onChange: (next: UniversityRegistry) => void;
   onChangeSchedule: (next: ScheduleEvent[]) => void;
@@ -309,7 +309,7 @@ function UnivRow({
 
       <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs">
         <span className="text-slate-500">
-          📅 일정 {events.length}개{events.some((e) => e.builtin) && ` (모집요강 ${events.filter((e) => e.builtin).length})`}
+          📅 일정 {events.length}개{events.some((e) => e.builtin) && ` (기본 ${events.filter((e) => e.builtin).length})`}
         </span>
         {next && (
           <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-indigo-700">
@@ -322,7 +322,7 @@ function UnivRow({
         </button>
         {(info.hiddenBuiltin?.length ?? 0) > 0 && (
           <button className="rounded px-1.5 py-0.5 text-slate-500 underline" onClick={() => onUpdate({ hiddenBuiltin: [] })}>
-            숨긴 모집요강 일정 {info.hiddenBuiltin!.length}개 다시 보기
+            숨긴 기본 일정 {info.hiddenBuiltin!.length}개 다시 보기
           </button>
         )}
       </div>
