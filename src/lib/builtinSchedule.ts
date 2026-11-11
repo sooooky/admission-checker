@@ -1,13 +1,27 @@
-// 모집요강에서 뽑은 대학별 최초합격 발표일(내장 일정)을 화면용 일정으로 만듭니다.
+// 대학별 기본 일정(발표·고사)을 화면용 일정으로 만듭니다.
 import { UNIV_SCHEDULE } from '../data/univSchedule';
 import type { ScheduleEvent, UniversityRegistry } from './types';
 import { resolveUniv } from './univLookup';
 
-const byDir = new Map<string, (typeof UNIV_SCHEDULE)[number][]>();
-for (const row of UNIV_SCHEDULE) byDir.set(row[0], [...(byDir.get(row[0]) ?? []), row]);
+type Row = (typeof UNIV_SCHEDULE)[number];
 
-export const builtinId = (dirName: string, date: string) => `builtin:${dirName}:${date}`;
+// 대학별로 묶고, 같은 날·같은 구분이 여러 개면 순번을 붙여 고유 id 를 만듭니다.
+const byDir = new Map<string, { row: Row; id: string }[]>();
+{
+  const seq = new Map<string, number>();
+  for (const row of UNIV_SCHEDULE) {
+    const [dir, date, , title] = row;
+    const k = `${dir}:${date}:${title}`;
+    const n = (seq.get(k) ?? 0) + 1;
+    seq.set(k, n);
+    byDir.set(dir, [...(byDir.get(dir) ?? []), { row, id: `builtin:${k}:${n}` }]);
+  }
+}
+
 export const hasBuiltinSchedule = (dirName: string) => byDir.has(dirName);
+
+/** 면접·논술·실기 같은 고사 일정인지 */
+export const isExamEvent = (e: Pick<ScheduleEvent, 'title'>) => /^(면접|논술|실기)/.test(e.title);
 
 /**
  * @param univNames 학생이 지원했거나 등록한 대학 이름(선생님이 쓰는 이름 그대로)
@@ -22,33 +36,21 @@ export function builtinEvents(univNames: string[], universities: UniversityRegis
     if (!dir) continue;
     covered.add(dir.name);
     const hidden = new Set(info?.hiddenBuiltin ?? []);
-    for (const [d, date, time, memo, verify] of byDir.get(dir.name) ?? []) {
-      const id = builtinId(d, date);
-      if (hidden.has(id)) continue;
-      out.push(toEvent(name, id, date, time, memo, verify));
+    for (const { row, id } of byDir.get(dir.name) ?? []) {
+      if (!hidden.has(id)) out.push(toEvent(name, id, row));
     }
   }
   if (includeAll) {
-    for (const [d, rows] of byDir) {
-      if (covered.has(d)) continue;
-      for (const [, date, time, memo, verify] of rows) out.push(toEvent(d, builtinId(d, date), date, time, memo, verify));
+    for (const [d, items] of byDir) {
+      if (!covered.has(d)) for (const { row, id } of items) out.push(toEvent(d, id, row));
     }
   }
   return out;
 }
 
-function toEvent(univ: string, id: string, date: string, time: string, memo: string, verify: boolean): ScheduleEvent {
-  return {
-    id: `${id}@${univ}`,
-    univ,
-    date,
-    endDate: '',
-    time,
-    title: '최초합격 발표',
-    memo: `📄 모집요강${verify ? ' (확인 권장)' : ''}: ${memo}`,
-    builtin: true,
-  };
+function toEvent(univ: string, id: string, [, date, time, title, memo]: Row): ScheduleEvent {
+  return { id: `${id}@${univ}`, univ, date, endDate: '', time, title, memo: memo ? `📄 ${memo}` : '', builtin: true };
 }
 
-/** 화면용 id(`builtin:대학:날짜@선생님대학명`) → 숨김 목록에 넣을 id */
+/** 화면용 id(`builtin:…@선생님대학명`) → 숨김 목록에 넣을 id */
 export const builtinBaseId = (eventId: string) => eventId.split('@')[0];

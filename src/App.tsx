@@ -3,6 +3,7 @@ import type { Application, ScheduleEvent, Student, UniversityRegistry, VaultData
 import { emptyVault, migrateVault, newId } from './lib/types';
 import { WaitlistView } from './components/WaitlistView';
 import { CalendarView } from './components/CalendarView';
+import { UnivScheduleModal } from './components/UnivScheduleModal';
 import { TodayView } from './components/TodayView';
 import { StatsView } from './components/StatsView';
 import { createKey, decryptJSON, encryptJSON, type KeyHandle } from './lib/crypto';
@@ -43,6 +44,7 @@ export default function App() {
   const [schedule, setSchedule] = useState<ScheduleEvent[]>(loadSchedule);
   const [tab, setTab] = useState<Tab>('list');
   const [hideInfo, setHideInfo] = useState(false);
+  const [schedUniv, setSchedUniv] = useState<string | null>(null);
   const [modal, setModal] = useState<null | 'import' | 'settings' | { edit: Application | null }>(null);
 
   const keyRef = useRef<KeyHandle | null>(null);
@@ -64,6 +66,7 @@ export default function App() {
     dirtyRef.current = false;
     setData(emptyVault());
     setModal(null);
+    setSchedUniv(null);
     setPhase(loadVaultBlob() ? 'locked' : 'setup');
   }, []);
 
@@ -269,6 +272,7 @@ export default function App() {
     onAddSibling: addSibling,
     onSetEnrolled: setEnrolled,
     onAdd: () => setModal({ edit: null }),
+    onOpenSchedule: setSchedUniv,
   };
 
   const tabs: [Tab, string][] = [
@@ -410,6 +414,16 @@ export default function App() {
           onClose={() => setModal(null)}
           onSave={saveEdited}
           onDelete={deleteApp}
+        />
+      )}
+      {schedUniv && (
+        <UnivScheduleModal
+          univ={schedUniv}
+          events={allSchedule.filter((e) => e.univ === schedUniv)}
+          onClose={() => setSchedUniv(null)}
+          onSave={(ev) => setSchedule((cur) => (cur.some((x) => x.id === ev.id) ? cur.map((x) => (x.id === ev.id ? ev : x)) : [...cur, ev]))}
+          onDelete={(ev) => setSchedule((cur) => cur.filter((x) => x.id !== ev.id))}
+          onHideBuiltin={hideBuiltin}
         />
       )}
       <Toaster />
