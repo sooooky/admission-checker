@@ -23,6 +23,8 @@ export interface Props {
   onAddSibling: (app: Application) => void;
   onAdd: () => void;
   onSetEnrolled: (studentId: string, appId: string | null) => void;
+  /** 대학 일정 창 열기 */
+  onOpenSchedule: (univ: string) => void;
 }
 
 /** 오늘 확인이 필요한 원서: 결과가 아직 확정되지 않았고(미조회·예비·확인필요) 오늘 기록이 없는 것 */
@@ -338,6 +340,8 @@ function AppRow({
   clusterSize,
   insight,
   onSetEnrolled,
+  onOpenSchedule,
+  schedule,
 }: Props & {
   insight?: StudentInsight;
   app: Application;
@@ -361,6 +365,7 @@ function AppRow({
     onChangeApp(a.id, (x) => recordResult(x, st, st === '예비' ? '' : ''));
   };
   const prevWait = [...a.history].reverse().find((h) => h.status === '예비' && h.waitNo);
+  const nextEvent = showUniv && !continued ? nextEventFor(a.university, schedule) : undefined;
   const name = s?.name ?? '(학생 정보 없음)';
   const birth = s?.birth ?? '';
   const other = settings.birthDigits === 6 ? 8 : 6;
@@ -411,6 +416,15 @@ function AppRow({
           {!continued && (a.major || '모집단위 미입력')}
           {!continued && clusterSize > 1 && <span className="font-medium text-blue-600"> · 이 대학 원서 {clusterSize}개</span>}
           {a.checkedAt && <span className="text-slate-400">{continued ? '' : ' · '}{formatDateTime(a.checkedAt)} 확인</span>}
+          {showUniv && !continued && (
+            <button
+              className="ml-1 rounded bg-indigo-50 px-1 text-indigo-700 hover:bg-indigo-100"
+              onClick={() => onOpenSchedule(a.university)}
+              title="이 대학 일정 보기·수정·추가"
+            >
+              📅 {nextEvent ? `${shortDate(nextEvent.date)} ${nextEvent.title}` : '일정'}
+            </button>
+          )}
         </p>
         {a.history.length > 0 && <HistoryChips history={a.history} />}
       </div>
@@ -523,17 +537,19 @@ function linkKind(univ: string, universities: UniversityRegistry): LinkKind {
   return r.url ? 'url' : r.home ? 'home' : 'none';
 }
 
-function UnivHeaderLinks({ univ, universities, schedule, onSetUnivUrl }: Props & { univ: string }) {
+function UnivHeaderLinks({ univ, universities, schedule, onSetUnivUrl, onOpenSchedule }: Props & { univ: string }) {
   const info = universities[univ];
   const r = resolveUniv(univ, info);
   const next = nextEventFor(univ, schedule);
   return (
     <div className="flex flex-wrap items-center gap-1.5">
-      {next && (
-        <span className="rounded-md bg-indigo-50 px-2 py-1 text-xs font-medium text-indigo-700" title={next.memo}>
-          📅 {shortDate(next.date)} {next.title}
-        </span>
-      )}
+      <button
+        className="rounded-md bg-indigo-50 px-2 py-1 text-xs font-medium text-indigo-700 hover:bg-indigo-100"
+        title={next ? `${next.memo}\n(눌러서 이 대학 일정 보기·수정·추가)` : '이 대학 발표 일정 추가'}
+        onClick={() => onOpenSchedule(univ)}
+      >
+        {next ? `📅 ${shortDate(next.date)} ${next.title}` : '📅 일정 추가'}
+      </button>
       {info?.memo && <span className="hidden max-w-[14rem] truncate text-xs text-slate-500 md:inline">📝 {info.memo}</span>}
       {r.plan && (
         <button className={btn.chip} onClick={() => openExternal(r.plan)} title="2027학년도 대학입학전형 시행계획">
