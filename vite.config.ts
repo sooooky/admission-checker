@@ -27,7 +27,11 @@ const cspPlugin = (): Plugin => ({
   },
 });
 
+// 화면 아래 '버전' 표시용 빌드 시각 (한국 시간)
+const BUILD_TIME = new Date(Date.now() + 9 * 3600_000).toISOString().slice(0, 16).replace('T', ' ');
+
 export default defineConfig({
+  define: { __BUILD_TIME__: JSON.stringify(BUILD_TIME) },
   base: '/admission-checker/',
   plugins: [react(), tailwindcss(), cspPlugin()],
   build: { chunkSizeWarningLimit: 1500 },
