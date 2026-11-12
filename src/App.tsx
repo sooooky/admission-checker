@@ -116,6 +116,11 @@ export default function App() {
 
   useEffect(() => saveUniversities(universities), [universities]);
   useEffect(() => saveSettings(settings), [settings]);
+
+  // 탭을 바꾸면 맨 위에서 시작 (이전 탭의 스크롤 위치가 남지 않도록)
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+  }, [tab]);
   useEffect(() => saveSchedule(schedule), [schedule]);
 
   // ── 자동 잠금 ──
