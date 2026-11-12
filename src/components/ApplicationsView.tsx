@@ -354,6 +354,9 @@ function AppRow({
   firstExamNo: string;
   clusterSize: number;
 }) {
+  // 예비번호 칸은 이 줄의 [예비]를 방금 눌렀을 때만 커서를 가져옵니다.
+  // (검색 등으로 목록이 다시 그려질 때 커서를 빼앗아 스크롤이 튀는 문제 방지)
+  const [focusWait, setFocusWait] = useState(false);
   const record = (st: Exclude<Status, '미조회'>) => {
     if (a.status === st) {
       // 같은 버튼을 다시 누르면: 방금 남긴 기록이면 취소, 오래된 기록이면 안내
@@ -362,6 +365,7 @@ function AppRow({
       else toast(`이미 "${st}"(으)로 기록되어 있습니다. 기록 수정·삭제는 ✎에서 할 수 있습니다.`);
       return;
     }
+    if (st === '예비') setFocusWait(true);
     onChangeApp(a.id, (x) => recordResult(x, st, st === '예비' ? '' : ''));
   };
   const prevWait = [...a.history].reverse().find((h) => h.status === '예비' && h.waitNo);
@@ -495,6 +499,8 @@ function AppRow({
             key={`${a.history.length}-${a.waitNo}`}
             current={a.waitNo}
             prev={prevWait?.waitNo ?? ''}
+            autoFocus={focusWait}
+            onDone={() => setFocusWait(false)}
             onCommit={(v) => onChangeApp(a.id, (x) => recordResult(x, '예비', v))}
           />
         )}
@@ -614,9 +620,22 @@ export function StudentBadges({ insight }: { insight?: StudentInsight }) {
 }
 
 /** 예비번호 입력칸: Enter 또는 칸을 벗어나면 기록 (값이 바뀐 경우만) */
-function WaitInput({ current, prev, onCommit }: { current: string; prev: string; onCommit: (v: string) => void }) {
+function WaitInput({
+  current,
+  prev,
+  autoFocus,
+  onDone,
+  onCommit,
+}: {
+  current: string;
+  prev: string;
+  autoFocus: boolean;
+  onDone: () => void;
+  onCommit: (v: string) => void;
+}) {
   const [v, setV] = useState(current);
   const commit = () => {
+    onDone();
     const n = v.replace(/[^\d]/g, '');
     if (n !== current) onCommit(n);
   };
@@ -625,7 +644,7 @@ function WaitInput({ current, prev, onCommit }: { current: string; prev: string;
       className="w-24 rounded-md border border-amber-300 px-2 py-1 text-xs"
       placeholder={prev ? `이전 ${prev}번` : '예비번호'}
       inputMode="numeric"
-      autoFocus={!current}
+      autoFocus={autoFocus}
       value={v}
       title="새 번호를 적고 Enter — 이전 번호는 기록에 남습니다"
       onChange={(e) => setV(e.target.value.replace(/[^\d]/g, ''))}
