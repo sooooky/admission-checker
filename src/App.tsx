@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { Application, ScheduleEvent, Student, UniversityRegistry, VaultData } from './lib/types';
 import { emptyVault, migrateVault, newId } from './lib/types';
 import { WaitlistView } from './components/WaitlistView';
@@ -118,8 +118,23 @@ export default function App() {
   useEffect(() => saveSettings(settings), [settings]);
 
   // 탭을 바꾸면 맨 위에서 시작 (이전 탭의 스크롤 위치가 남지 않도록)
-  useEffect(() => {
-    window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+  // 화면을 그리기 직전에 한 번, 그린 뒤 두 프레임에 걸쳐 한 번 더 (브라우저의 부드러운 스크롤·위치 복원이 덮어쓰지 않도록)
+  useLayoutEffect(() => {
+    const toTop = () => {
+      window.scrollTo({ top: 0, left: 0, behavior: 'instant' as ScrollBehavior });
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0;
+    };
+    toTop();
+    let r2 = 0;
+    const r1 = requestAnimationFrame(() => {
+      toTop();
+      r2 = requestAnimationFrame(toTop);
+    });
+    return () => {
+      cancelAnimationFrame(r1);
+      cancelAnimationFrame(r2);
+    };
   }, [tab]);
   useEffect(() => saveSchedule(schedule), [schedule]);
 
@@ -383,6 +398,7 @@ export default function App() {
         )}
         {tab === 'guide' && <GuideView />}
       </main>
+      <footer className="mx-auto max-w-6xl px-4 pb-6 text-right text-[11px] text-slate-400">버전 {__BUILD_TIME__}</footer>
 
       {modal === 'import' && <ImportModal data={data} onClose={() => setModal(null)} onImport={(d) => commit(() => d)} />}
       {modal === 'settings' && (
