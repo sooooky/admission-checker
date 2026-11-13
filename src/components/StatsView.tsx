@@ -3,6 +3,7 @@ import type { VaultData } from '../lib/types';
 import { computeStats, pct } from '../lib/insights';
 import { exportResults } from '../lib/excel';
 import { btn, toast } from './ui';
+import { UnivLink } from './UnivLink';
 
 export function StatsView({ data }: { data: VaultData }) {
   const st = useMemo(() => computeStats(data), [data]);
@@ -116,7 +117,7 @@ export function StatsView({ data }: { data: VaultData }) {
               {univs.map((u) => (
                 <tr key={u.university}>
                   <td className="px-2 py-1.5">
-                    {u.university}
+                    <UnivLink univ={u.university} />
                     <span className="ml-1 text-[11px] text-slate-400">{u.kind === '4년제' ? '' : '그 외'}</span>
                   </td>
                   <td className="px-2 py-1.5 text-right">{u.total}</td>

@@ -6,6 +6,7 @@ import { encodePayload } from '../lib/autofill';
 import type { Settings } from '../lib/storage';
 import { STATUS_STYLE } from './status';
 import { resolveUniv } from '../lib/univLookup';
+import { UnivLink } from './UnivLink';
 import { isPass, studentInsight, type StudentInsight } from '../lib/insights';
 import { nextEventFor, shortDate } from './CalendarView';
 import { btn, copyText, inputCls, toast } from './ui';
@@ -278,16 +279,19 @@ export function ApplicationsView(p: Props) {
         return (
           <section key={key} className="overflow-hidden rounded-2xl bg-white shadow-sm">
             <header className="flex flex-wrap items-center gap-2 border-b border-slate-100 bg-slate-50/60 px-4 py-3">
-              <button
-                className="flex min-w-0 flex-1 items-center gap-2 text-left"
-                onClick={() => setCollapsed({ ...collapsed, [key]: !isCollapsed })}
-              >
-                <span className="text-slate-400">{isCollapsed ? '▸' : '▾'}</span>
-                <span className="truncate font-bold">{title}</span>
+              <div className="flex min-w-0 flex-1 items-center gap-2">
+                <button
+                  className="rounded px-1 text-slate-400 hover:bg-slate-200"
+                  onClick={() => setCollapsed({ ...collapsed, [key]: !isCollapsed })}
+                  title={isCollapsed ? '펼치기' : '접기'}
+                >
+                  {isCollapsed ? '▸' : '▾'}
+                </button>
+                {isUniv ? <UnivLink univ={key} className="truncate font-bold" /> : <span className="truncate font-bold">{title}</span>}
                 <span className="shrink-0 text-xs text-slate-500">
                   {apps.length}건{pending > 0 && <span className="text-blue-600"> · 미조회 {pending}</span>}
                 </span>
-              </button>
+              </div>
               {isUniv && <UnivHeaderLinks univ={key} {...p} />}
               {!isUniv && student && (
                 <span className="text-xs text-slate-500">
@@ -382,8 +386,10 @@ function AppRow({
         <div className="flex items-center gap-2">
           {continued ? (
             <span className="font-semibold text-slate-700">↳ {a.major || '모집단위 미입력'}</span>
+          ) : showUniv ? (
+            <UnivLink univ={a.university} className="font-semibold" />
           ) : (
-            <span className="font-semibold">{showUniv ? a.university : hideInfo ? maskName(name) : name}</span>
+            <span className="font-semibold">{hideInfo ? maskName(name) : name}</span>
           )}
           {!continued && !showUniv && insight && insight.warnings.length > 0 && (
             <span className="cursor-help text-xs text-rose-600" title={insight.warnings.join('\n')}>
