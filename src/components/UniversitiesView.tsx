@@ -9,6 +9,7 @@ import { mergeSchedule } from '../lib/schedule';
 import { isSafeUrl, openExternal } from './ApplicationsView';
 import { EventModal, nextEventFor, nextPreset, shortDate, ymd } from './CalendarView';
 import { btn, inputCls, toast } from './ui';
+import { UnivLink } from './UnivLink';
 
 export function UniversitiesView({
   applications,
@@ -232,7 +233,7 @@ function UnivRow({
   return (
     <div className="rounded-2xl bg-white p-4 shadow-sm">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="font-bold">{row.name}</span>
+        <UnivLink univ={row.name} className="font-bold" />
         {r.dir && <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-600">{r.dir.region}</span>}
         {r.dir && r.dir.name !== row.name && <span className="text-[11px] text-slate-400">→ {r.dir.name}</span>}
         {notInDir && <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[11px] text-amber-700">내장 목록에 없음 (전문대 등)</span>}

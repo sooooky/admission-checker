@@ -4,6 +4,7 @@ import { emptyVault, migrateVault, newId } from './lib/types';
 import { WaitlistView } from './components/WaitlistView';
 import { CalendarView } from './components/CalendarView';
 import { UnivScheduleModal } from './components/UnivScheduleModal';
+import { OpenScheduleContext } from './components/UnivLink';
 import { TodayView } from './components/TodayView';
 import { StatsView } from './components/StatsView';
 import { createKey, decryptJSON, encryptJSON, type KeyHandle } from './lib/crypto';
@@ -306,6 +307,7 @@ export default function App() {
   ];
 
   return (
+    <OpenScheduleContext.Provider value={setSchedUniv}>
     <div className="min-h-screen pb-16">
       <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/90 backdrop-blur">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-2 px-4 py-3">
@@ -440,7 +442,7 @@ export default function App() {
       {schedUniv && (
         <UnivScheduleModal
           univ={schedUniv}
-          events={allSchedule.filter((e) => e.univ === schedUniv)}
+          events={[...schedule.filter((e) => e.univ === schedUniv), ...builtinEvents([schedUniv], universities)]}
           onClose={() => setSchedUniv(null)}
           onSave={(ev) => setSchedule((cur) => (cur.some((x) => x.id === ev.id) ? cur.map((x) => (x.id === ev.id ? ev : x)) : [...cur, ev]))}
           onDelete={(ev) => setSchedule((cur) => cur.filter((x) => x.id !== ev.id))}
@@ -449,5 +451,6 @@ export default function App() {
       )}
       <Toaster />
     </div>
+    </OpenScheduleContext.Provider>
   );
 }

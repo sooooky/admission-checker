@@ -20,6 +20,13 @@ const byDir = new Map<string, { row: Row; id: string }[]>();
 
 export const hasBuiltinSchedule = (dirName: string) => byDir.has(dirName);
 
+const sig = (dir: string) => (byDir.get(dir) ?? []).map(({ row: [, d, t, title, memo] }) => `${d}|${t}|${title}|${memo}`).join('\n');
+/** 여러 캠퍼스의 기본 일정이 모두 같은지 (일정이 있는 경우만) */
+function sameSchedule(dirs: string[]) {
+  const first = sig(dirs[0]);
+  return !!first && dirs.every((d) => sig(d) === first);
+}
+
 /** 면접·논술·실기 같은 고사 일정인지 */
 export const isExamEvent = (e: Pick<ScheduleEvent, 'title'>) => /^(면접|논술|실기)/.test(e.title);
 
@@ -32,7 +39,9 @@ export function builtinEvents(univNames: string[], universities: UniversityRegis
   const covered = new Set<string>();
   for (const name of new Set(univNames)) {
     const info = universities[name];
-    const dir = resolveUniv(name, info).dir;
+    const r = resolveUniv(name, info);
+    // 캠퍼스를 정하지 않았어도 후보 캠퍼스들의 일정이 모두 같으면(캠퍼스 구분 없이 운영) 그 일정을 씁니다.
+    const dir = r.dir ?? (r.candidates.length && sameSchedule(r.candidates.map((c) => c.name)) ? r.candidates[0] : undefined);
     if (!dir) continue;
     covered.add(dir.name);
     const hidden = new Set(info?.hiddenBuiltin ?? []);

@@ -4,6 +4,7 @@ import { entryDate } from '../lib/types';
 import { maskName } from '../lib/format';
 import { STATUS_STYLE } from './status';
 import { HistoryChips } from './ApplicationsView';
+import { UnivLink } from './UnivLink';
 
 /** 예비번호를 한 번이라도 받은 원서의 번호 변화를 시간순으로 보여 줍니다. */
 export function WaitlistView({
@@ -92,7 +93,7 @@ export function WaitlistView({
                   <tr key={a.id} className="cursor-pointer align-top hover:bg-slate-50" onClick={() => onEdit(a)}>
                     <td className="px-3 py-2 font-semibold whitespace-nowrap">{hideInfo ? maskName(name) : name}</td>
                     <td className="px-3 py-2">
-                      {a.university}
+                      <UnivLink univ={a.university} />
                       {a.major && <span className="text-slate-500"> · {a.major}</span>}
                     </td>
                     <td className="px-3 py-2 text-center whitespace-nowrap tabular-nums">
