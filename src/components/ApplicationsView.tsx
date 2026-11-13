@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Application, ScheduleEvent, Status, Student, UniversityRegistry } from '../lib/types';
 import { STATUSES, admLabel, admTypeOf, checkedToday, entryDate, entryText, hasMinReq, nextMinReq, recordResult, undoLast, type MinReq } from '../lib/types';
 import { birthAs, formatBirth, formatDateTime, maskName, maskPhone } from '../lib/format';
@@ -98,9 +98,21 @@ export function ApplicationsView(p: Props) {
 
   const studentById = useMemo(() => new Map(p.students.map((s) => [s.id, s])), [p.students]);
 
-  const filtered = useMemo(() => {
+  // 필터를 켠 상태에서 기록한 원서는, 조건에서 벗어나도 필터·검색어를 바꾸기 전까지 그 자리에 남겨 둡니다.
+  // (예: '오늘 미확인'에서 [예비]를 누르면 바로 사라져 예비번호를 적을 수 없던 문제)
+  const [kept, setKept] = useState<Set<string>>(() => new Set());
+  useEffect(() => setKept(new Set()), [statusFilter, admFilter, query, groupBy]);
+  const changeKept = useCallback(
+    (id: string, fn: (a: Application) => Application) => {
+      if (statusFilter !== '전체') setKept((prev) => (prev.has(id) ? prev : new Set(prev).add(id)));
+      p.onChangeApp(id, fn);
+    },
+    [statusFilter, p.onChangeApp],
+  );
+
+  const matches = useCallback((a: Application) => {
     const q = query.trim().toLowerCase();
-    return p.applications.filter((a) => {
+    {
       if (admFilter === '수시' && admTypeOf(a) !== '수시') return false;
       if (admFilter === '정시·추가' && admTypeOf(a) === '수시') return false;
       if (statusFilter === '이번차수') {
@@ -113,8 +125,10 @@ export function ApplicationsView(p: Props) {
       if (!q) return true;
       const s = studentById.get(a.studentId);
       return [s?.name, s?.memo, a.university, a.major, a.examNo, a.note].some((x) => x?.toLowerCase().includes(q));
-    });
-  }, [p.applications, query, statusFilter, studentById, admFilter]);
+    }
+  }, [query, statusFilter, studentById, admFilter]);
+
+  const filtered = useMemo(() => p.applications.filter((a) => kept.has(a.id) || matches(a)), [p.applications, kept, matches]);
 
   const groups = useMemo(() => {
     const map = new Map<string, Application[]>();
@@ -316,6 +330,8 @@ export function ApplicationsView(p: Props) {
                     linkKind={linkKind(a.university, p.universities)}
                     insight={insightById.get(a.studentId)}
                     {...p}
+                    onChangeApp={changeKept}
+                    handled={kept.has(a.id) && !matches(a)}
                     onLookup={() => lookup(a)}
                   />
                 ))}
@@ -343,11 +359,14 @@ function AppRow({
   firstExamNo,
   clusterSize,
   insight,
+  handled,
   onSetEnrolled,
   onOpenSchedule,
   schedule,
 }: Props & {
   insight?: StudentInsight;
+  /** 필터 조건에서 벗어났지만 방금 처리해서 남겨 둔 원서 */
+  handled?: boolean;
   app: Application;
   student?: Student;
   showUniv: boolean;
@@ -406,6 +425,14 @@ function AppRow({
             {a.status === '예비' && a.waitNo && ` ${a.waitNo}번`}
             {a.status === '충원합격' && a.round && ` ${a.round}차`}
           </span>
+          {handled && (
+            <span
+              className="rounded bg-blue-600 px-1.5 py-0.5 text-[11px] font-semibold text-white"
+              title="필터 조건에서는 벗어났지만, 이어서 기록할 수 있도록 다른 필터·검색어를 고르기 전까지 이 자리에 남겨 둡니다"
+            >
+              ✓ 처리됨
+            </span>
+          )}
           {admTypeOf(a) !== '수시' && (
             <span className="rounded bg-sky-100 px-1.5 py-0.5 text-[11px] font-medium text-sky-800">{admLabel(a)}</span>
           )}
